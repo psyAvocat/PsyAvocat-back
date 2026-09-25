@@ -15,8 +15,7 @@ import java.time.LocalDate;
 public abstract class Utilisateur {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private String id;
+    private String id; // Firebase UID
 
     @Column(nullable = false)
     private String nom;
@@ -27,7 +26,7 @@ public abstract class Utilisateur {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
+    @Column
     private String motDePasse;
 
     private String telephone;

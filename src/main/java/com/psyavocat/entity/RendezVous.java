@@ -25,7 +25,7 @@ public class RendezVous {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "patient_id")
-    private Patient patient;
+    private Utilisateur patient;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "professionnel_id")
