@@ -2,6 +2,7 @@ package com.psyavocat.controller;
 
 import com.psyavocat.dto.dossier.*;
 import com.psyavocat.service.DossierService;
+import com.psyavocat.service.SoumissionDossierService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,9 +16,14 @@ import java.util.List;
 public class DossierController {
 
     private final DossierService dossierService;
+    private final SoumissionDossierService soumissionDossierService;
 
-    public DossierController(DossierService dossierService) {
+    public DossierController(
+            DossierService dossierService,
+            SoumissionDossierService soumissionDossierService
+    ) {
         this.dossierService = dossierService;
+        this.soumissionDossierService = soumissionDossierService;
     }
 
     @PostMapping("/dossiers")
@@ -40,7 +46,7 @@ public class DossierController {
             @PathVariable String id,
             @Valid @RequestBody SoumissionDossierRequest request
     ) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(dossierService.soumettreDossier(id, request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(soumissionDossierService.soumettreDossier(id, request));
     }
 
     @GetMapping("/avocat/soumissions")
@@ -48,7 +54,7 @@ public class DossierController {
     public ResponseEntity<List<SoumissionDossierResponseDTO>> getSoumissionsPourAvocat(
             @RequestParam(required = false) String statut
     ) {
-        return ResponseEntity.ok(dossierService.getSoumissionsPourAvocat(statut));
+        return ResponseEntity.ok(soumissionDossierService.getSoumissionsPourAvocat(statut));
     }
 
     @PatchMapping("/avocat/soumissions/{id}/repondre")
@@ -57,6 +63,6 @@ public class DossierController {
             @PathVariable String id,
             @Valid @RequestBody RepondreSoumissionRequest request
     ) {
-        return ResponseEntity.ok(dossierService.repondreSoumission(id, request));
+        return ResponseEntity.ok(soumissionDossierService.repondreSoumission(id, request));
     }
 }
