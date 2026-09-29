@@ -18,6 +18,9 @@ public class Questionnaire {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    @Column(unique = true)
+    private String code;
+
     @Column(nullable = false)
     private String titre;
 

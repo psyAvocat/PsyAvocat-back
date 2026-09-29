@@ -15,4 +15,8 @@ public interface DisponibiliteRepository extends JpaRepository<Disponibilite, St
     List<Disponibilite> findByProfessionnelIdAndStatut(String professionnelId, String statut);
 
     List<Disponibilite> findByProfessionnelIdAndDateGreaterThanEqualOrderByDateAscHeureDebutAsc(String professionnelId, LocalDate date);
+
+    boolean existsByProfessionnelIdAndDateAndHeureDebut(String professionnelId, LocalDate date, java.time.LocalTime heureDebut);
+
+    long countByProfessionnelId(String professionnelId);
 }

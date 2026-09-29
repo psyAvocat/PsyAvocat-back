@@ -13,6 +13,7 @@ import java.util.List;
 @AllArgsConstructor
 public class QuestionnaireDTO {
     private String id;
+    private String code;
     private String titre;
     private String type;
     private Boolean actif;

@@ -13,6 +13,7 @@ import java.util.List;
 @AllArgsConstructor
 public class QuestionDTO {
     private String id;
+    private String code;
     private String texte;
     private Integer ordre;
     private Boolean obligatoire;

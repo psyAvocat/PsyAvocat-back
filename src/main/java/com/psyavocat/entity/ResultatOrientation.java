@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "resultats_orientation")
@@ -22,8 +24,8 @@ public class ResultatOrientation {
     private Double score;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "patient_id")
-    private Patient patient;
+    @JoinColumn(name = "utilisateur_id", nullable = false)
+    private Utilisateur utilisateur; // Accepte Patient ET Justiciable
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "questionnaire_id")
@@ -31,5 +33,25 @@ public class ResultatOrientation {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "categorie_besoin_id")
-    private CategorieBesoin categorieBesoin;
+    private CategorieBesoin categorieBesoin; // Univers Psychologue
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "specialite_id")
+    private Specialite specialite; // Univers Avocat
+
+    @ManyToMany
+    @JoinTable(
+            name = "resultat_professionnels_recommandes",
+            joinColumns = @JoinColumn(name = "resultat_id"),
+            inverseJoinColumns = @JoinColumn(name = "professionnel_id")
+    )
+    private List<Professionnel> professionnelsRecommandes = new ArrayList<>();
+
+    public Utilisateur getPatient() {
+        return utilisateur;
+    }
+
+    public void setPatient(Utilisateur patient) {
+        this.utilisateur = patient;
+    }
 }

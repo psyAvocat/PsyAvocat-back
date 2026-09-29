@@ -3,6 +3,9 @@ package com.psyavocat.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "reponses")
 @Getter
@@ -15,6 +18,8 @@ public class Reponse {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    private String code;
+
     @Column(nullable = false)
     private String libelle;
 
@@ -25,4 +30,7 @@ public class Reponse {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "question_id")
     private Question question;
+
+    @OneToMany(mappedBy = "reponse", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PonderationOrientation> ponderations = new ArrayList<>();
 }

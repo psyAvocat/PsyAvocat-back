@@ -10,6 +10,8 @@ import java.util.Collection;
  */
 public class FirebaseAuthenticationToken extends AbstractAuthenticationToken {
 
+    private static final long serialVersionUID = 1L;
+
     private final AuthenticatedUser principal;
     private final String credentials; // ID Token
 

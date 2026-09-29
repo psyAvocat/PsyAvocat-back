@@ -7,7 +7,13 @@ import com.psyavocat.service.OrientationService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
@@ -22,8 +28,15 @@ public class OrientationController {
     }
 
     @GetMapping("/questionnaires")
-    public ResponseEntity<List<QuestionnaireDTO>> getQuestionnaires() {
-        return ResponseEntity.ok(orientationService.getQuestionnaires());
+    public ResponseEntity<List<QuestionnaireDTO>> getQuestionnaires(
+            @RequestParam(required = false) String type
+    ) {
+        return ResponseEntity.ok(orientationService.getQuestionnaires(type));
+    }
+
+    @GetMapping("/questionnaires/type/{type}")
+    public ResponseEntity<QuestionnaireDTO> getQuestionnaireByType(@PathVariable String type) {
+        return ResponseEntity.ok(orientationService.getQuestionnaireByType(type));
     }
 
     @PostMapping("/evaluer")

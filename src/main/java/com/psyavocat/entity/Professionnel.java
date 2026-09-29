@@ -26,6 +26,16 @@ public abstract class Professionnel extends Utilisateur {
 
     private String statutValidation;
 
+    private String photoUrl;
+
+    private Double noteMoyenne;
+
+    private Integer nombreAvis;
+
+    private Boolean enLigne = false;
+
+    private String langues; // Ex: "Français, Bambara, Anglais"
+
     @ManyToMany
     @JoinTable(
             name = "professionnel_specialites",
@@ -36,6 +46,9 @@ public abstract class Professionnel extends Utilisateur {
 
     @OneToMany(mappedBy = "professionnel", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Disponibilite> disponibilites = new ArrayList<>();
+
+    @OneToMany(mappedBy = "professionnel", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<TarifProfessionnel> tarifs = new ArrayList<>();
 
     @OneToMany(mappedBy = "professionnel")
     private List<RendezVous> rendezVous = new ArrayList<>();

@@ -9,5 +9,9 @@ import java.util.List;
 @Repository
 public interface ResultatOrientationRepository extends JpaRepository<ResultatOrientation, String> {
 
-    List<ResultatOrientation> findByPatientIdOrderByDateEvaluationDesc(String patientId);
+    List<ResultatOrientation> findByUtilisateurIdOrderByDateEvaluationDesc(String utilisateurId);
+
+    default List<ResultatOrientation> findByPatientIdOrderByDateEvaluationDesc(String patientId) {
+        return findByUtilisateurIdOrderByDateEvaluationDesc(patientId);
+    }
 }

@@ -18,6 +18,8 @@ public class Question {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    private String code;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String texte;
 

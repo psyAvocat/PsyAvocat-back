@@ -3,7 +3,12 @@ package com.psyavocat.security;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
-import com.psyavocat.entity.*;
+import com.psyavocat.entity.Administrateur;
+import com.psyavocat.entity.Avocat;
+import com.psyavocat.entity.Justiciable;
+import com.psyavocat.entity.Patient;
+import com.psyavocat.entity.Psychologue;
+import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.repository.UtilisateurRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -11,7 +16,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.lang.NonNull;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -50,9 +54,9 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(
-            @NonNull HttpServletRequest request,
-            @NonNull HttpServletResponse response,
-            @NonNull FilterChain filterChain
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain
     ) throws ServletException, IOException {
 
         String bearerToken = resolveToken(request);

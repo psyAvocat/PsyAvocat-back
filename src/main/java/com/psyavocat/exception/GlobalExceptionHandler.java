@@ -11,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -58,7 +59,7 @@ public class GlobalExceptionHandler {
         body.put("error", "Forbidden");
         body.put("message", "Accès refusé : privilèges insuffisants pour exécuter cette opération.");
         body.put("path", request.getRequestURI());
-        body.put("timestamp", java.time.Instant.now().toString());
+        body.put("timestamp", Instant.now().toString());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
 

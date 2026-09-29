@@ -2,6 +2,7 @@ package com.psyavocat.dto.professionnel;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.psyavocat.dto.referentiel.SpecialiteDTO;
+import com.psyavocat.dto.referentiel.TarifProfessionnelDTO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -29,5 +30,11 @@ public class ProfessionnelResponseDTO {
     private String statutValidation; // PENDING, APPROVED, REJECTED, SUSPENDED
     private String numeroBarreau;
     private String numeroAgrement;
+    private String photoUrl;
+    private Double noteMoyenne;
+    private Integer nombreAvis;
+    private Boolean enLigne;
+    private String langues;
     private List<SpecialiteDTO> specialites;
+    private List<TarifProfessionnelDTO> tarifs;
 }

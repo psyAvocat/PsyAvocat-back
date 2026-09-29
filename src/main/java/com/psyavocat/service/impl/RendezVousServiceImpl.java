@@ -1,5 +1,6 @@
 package com.psyavocat.service.impl;
 
+import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatDirectRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousPsyRequest;
 import com.psyavocat.dto.rendezvous.RendezVousResponseDTO;
@@ -25,6 +26,7 @@ public class RendezVousServiceImpl implements RendezVousService {
     private final RendezVousRepository rendezVousRepository;
     private final DisponibiliteRepository disponibiliteRepository;
     private final PsychologueRepository psychologueRepository;
+    private final AvocatRepository avocatRepository;
     private final SoumissionDossierRepository soumissionDossierRepository;
     private final DossierRepository dossierRepository;
     private final PaiementService paiementService;
@@ -35,6 +37,7 @@ public class RendezVousServiceImpl implements RendezVousService {
             RendezVousRepository rendezVousRepository,
             DisponibiliteRepository disponibiliteRepository,
             PsychologueRepository psychologueRepository,
+            AvocatRepository avocatRepository,
             SoumissionDossierRepository soumissionDossierRepository,
             DossierRepository dossierRepository,
             PaiementService paiementService,
@@ -44,6 +47,7 @@ public class RendezVousServiceImpl implements RendezVousService {
         this.rendezVousRepository = rendezVousRepository;
         this.disponibiliteRepository = disponibiliteRepository;
         this.psychologueRepository = psychologueRepository;
+        this.avocatRepository = avocatRepository;
         this.soumissionDossierRepository = soumissionDossierRepository;
         this.dossierRepository = dossierRepository;
         this.paiementService = paiementService;
@@ -169,6 +173,53 @@ public class RendezVousServiceImpl implements RendezVousService {
                 soumissionDossierRepository.save(autre);
             }
         }
+
+        return toDto(savedRdv, montantTotal);
+    }
+
+    @Override
+    public RendezVousResponseDTO createRendezVousAvocatDirect(CreateRendezVousAvocatDirectRequest request) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Utilisateur justiciable = utilisateurRepository.findById(uid)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
+
+        Avocat avocat = avocatRepository.findById(request.getAvocatId())
+                .orElseThrow(() -> new ResourceNotFoundException("Avocat introuvable"));
+
+        if (!"APPROVED".equalsIgnoreCase(avocat.getStatutValidation()) && !"VALIDE".equalsIgnoreCase(avocat.getStatutValidation())) {
+            throw new BadRequestException("Cet avocat n'est pas encore validé par la plateforme");
+        }
+
+        Disponibilite disp = disponibiliteRepository.findById(request.getDisponibiliteId())
+                .orElseThrow(() -> new ResourceNotFoundException("Créneau de disponibilité introuvable"));
+
+        if (!"LIBRE".equalsIgnoreCase(disp.getStatut())) {
+            throw new BadRequestException("Ce créneau n'est plus disponible");
+        }
+
+        if (!disp.getProfessionnel().getId().equals(avocat.getId())) {
+            throw new BadRequestException("Le créneau n'appartient pas à l'avocat sélectionné");
+        }
+
+        // Réservation immédiate du créneau
+        disp.setStatut("RESERVE");
+        disponibiliteRepository.save(disp);
+
+        BigDecimal montantTotal = request.getMontantTotal();
+        BigDecimal montantAcompte = paiementService.calculerAcompteRendezVous(montantTotal);
+
+        RendezVous rdv = new RendezVous();
+        rdv.setDateHeure(LocalDateTime.of(disp.getDate(), disp.getHeureDebut()));
+        rdv.setStatut("CONFIRME");
+        rdv.setMode(request.getMode() != null ? request.getMode() : "CABINET");
+        rdv.setPatient(justiciable);
+        rdv.setProfessionnel(avocat);
+
+        RendezVous savedRdv = rendezVousRepository.save(rdv);
+
+        // Traitement de l'acompte simulé via le service de paiement dédié
+        Paiement paiement = paiementService.traiterAcompteRendezVous(justiciable, savedRdv, montantAcompte);
+        savedRdv.setPaiement(paiement);
 
         return toDto(savedRdv, montantTotal);
     }

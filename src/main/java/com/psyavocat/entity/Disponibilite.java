@@ -24,9 +24,12 @@ public class Disponibilite {
 
     private LocalTime heureFin;
 
-    private String statut;
+    private String statut; // DISPONIBLE, RESERVE, BLOQUE
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "professionnel_id")
     private Professionnel professionnel;
+
+    @OneToOne(mappedBy = "disponibilite")
+    private RendezVous rendezVous;
 }

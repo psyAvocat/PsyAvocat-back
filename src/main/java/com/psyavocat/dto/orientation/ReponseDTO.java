@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ReponseDTO {
     private String id;
+    private String code;
     private String libelle;
     private String valeur;
     private Integer poids;

@@ -3,9 +3,19 @@ package com.psyavocat.service;
 import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousPsyRequest;
 import com.psyavocat.dto.rendezvous.RendezVousResponseDTO;
-import com.psyavocat.entity.*;
+import com.psyavocat.entity.Avocat;
+import com.psyavocat.entity.Disponibilite;
+import com.psyavocat.entity.Dossier;
+import com.psyavocat.entity.Justiciable;
+import com.psyavocat.entity.Paiement;
+import com.psyavocat.entity.Patient;
+import com.psyavocat.entity.Psychologue;
+import com.psyavocat.entity.RendezVous;
+import com.psyavocat.entity.SoumissionDossier;
+import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.exception.BadRequestException;
 import com.psyavocat.exception.ForbiddenException;
+import com.psyavocat.repository.AvocatRepository;
 import com.psyavocat.repository.DisponibiliteRepository;
 import com.psyavocat.repository.DossierRepository;
 import com.psyavocat.repository.PsychologueRepository;
@@ -23,8 +33,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,6 +54,9 @@ class RendezVousServiceTest {
 
     @Mock
     private PsychologueRepository psychologueRepository;
+
+    @Mock
+    private AvocatRepository avocatRepository;
 
     @Mock
     private SoumissionDossierRepository soumissionDossierRepository;
@@ -73,6 +86,7 @@ class RendezVousServiceTest {
                 rendezVousRepository,
                 disponibiliteRepository,
                 psychologueRepository,
+                avocatRepository,
                 soumissionDossierRepository,
                 dossierRepository,
                 paiementService,
@@ -202,7 +216,7 @@ class RendezVousServiceTest {
         when(utilisateurRepository.findById(justiciable.getId())).thenReturn(Optional.of(justiciable));
         when(soumissionDossierRepository.findById(soumission.getId())).thenReturn(Optional.of(soumission));
         when(disponibiliteRepository.findById(disponibilite.getId())).thenReturn(Optional.of(disponibilite));
-        when(soumissionDossierRepository.findByDossierId(dossier.getId())).thenReturn(java.util.List.of(soumission, autreSoumission));
+        when(soumissionDossierRepository.findByDossierId(dossier.getId())).thenReturn(List.of(soumission, autreSoumission));
 
         BigDecimal acompte = new BigDecimal("40.00");
         when(paiementService.calculerAcompteRendezVous(soumission.getTarifPropose())).thenReturn(acompte);

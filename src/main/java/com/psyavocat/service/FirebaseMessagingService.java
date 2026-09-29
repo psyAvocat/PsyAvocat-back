@@ -17,6 +17,7 @@ import java.util.Map;
  */
 @Slf4j
 @Service
+@SuppressWarnings("deprecation")
 public class FirebaseMessagingService {
 
     private final ObjectProvider<FirebaseMessaging> firebaseMessagingProvider;

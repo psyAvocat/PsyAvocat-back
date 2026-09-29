@@ -24,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -255,9 +256,9 @@ class SoumissionDossierServiceTest {
 
         when(authenticationContext.getRequiredFirebaseUid()).thenReturn(avocatA.getId());
         when(soumissionDossierRepository.findByAvocatIdOrderByDateSoumissionDesc(avocatA.getId()))
-                .thenReturn(java.util.List.of(sActive, sCaduque));
+                .thenReturn(List.of(sActive, sCaduque));
 
-        java.util.List<SoumissionDossierResponseDTO> result = soumissionDossierService.getSoumissionsPourAvocat(null);
+        List<SoumissionDossierResponseDTO> result = soumissionDossierService.getSoumissionsPourAvocat(null);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getId()).isEqualTo("s-active");

@@ -8,6 +8,6 @@ import java.util.Optional;
 
 @Repository
 public interface SpecialiteRepository extends JpaRepository<Specialite, String> {
-
     Optional<Specialite> findByNomIgnoreCase(String nom);
+    boolean existsByNomIgnoreCase(String nom);
 }

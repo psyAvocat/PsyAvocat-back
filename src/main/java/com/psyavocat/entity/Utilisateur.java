@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "utilisateurs")
@@ -32,4 +34,10 @@ public abstract class Utilisateur {
     private String telephone;
 
     private LocalDate dateInscription;
+
+    @OneToMany(mappedBy = "client")
+    private List<RendezVous> rendezVous = new ArrayList<>();
+
+    @OneToMany(mappedBy = "utilisateur", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ResultatOrientation> resultatsOrientation = new ArrayList<>();
 }

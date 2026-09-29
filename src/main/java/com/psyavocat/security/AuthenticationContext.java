@@ -39,6 +39,13 @@ public class AuthenticationContext {
     }
 
     /**
+     * Récupère le Firebase UID de l'utilisateur connecté s'il existe.
+     */
+    public Optional<String> getFirebaseUid() {
+        return getCurrentUser().map(AuthenticatedUser::getFirebaseUid);
+    }
+
+    /**
      * Récupère l'entité métier MySQL de l'utilisateur connecté s'il est enregistré.
      */
     public Optional<Utilisateur> getCurrentUtilisateur() {

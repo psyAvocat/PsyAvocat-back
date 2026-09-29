@@ -2,6 +2,7 @@ package com.psyavocat.mapper;
 
 import com.psyavocat.dto.professionnel.ProfessionnelResponseDTO;
 import com.psyavocat.dto.referentiel.SpecialiteDTO;
+import com.psyavocat.dto.referentiel.TarifProfessionnelDTO;
 import com.psyavocat.entity.Avocat;
 import com.psyavocat.entity.Professionnel;
 import com.psyavocat.entity.Psychologue;
@@ -28,7 +29,12 @@ public class ProfessionnelMapper {
                 .ville(pro.getVille())
                 .adresse(pro.getAdresse())
                 .modeConsultation(pro.getModeConsultation())
-                .statutValidation(pro.getStatutValidation());
+                .statutValidation(pro.getStatutValidation())
+                .photoUrl(pro.getPhotoUrl())
+                .noteMoyenne(pro.getNoteMoyenne())
+                .nombreAvis(pro.getNombreAvis())
+                .enLigne(pro.getEnLigne())
+                .langues(pro.getLangues());
 
         if (pro instanceof Avocat avocat) {
             builder.type("AVOCAT")
@@ -45,6 +51,18 @@ public class ProfessionnelMapper {
             builder.specialites(specDtos);
         } else {
             builder.specialites(Collections.emptyList());
+        }
+
+        if (pro.getTarifs() != null) {
+            List<TarifProfessionnelDTO> tarifDtos = pro.getTarifs().stream()
+                    .filter(t -> Boolean.TRUE.equals(t.getActif()))
+                    .map(t -> new TarifProfessionnelDTO(
+                            t.getId(), t.getTitre(), t.getMontant(), t.getDevise(), t.getDescription(), t.getDureeMinutes()
+                    ))
+                    .toList();
+            builder.tarifs(tarifDtos);
+        } else {
+            builder.tarifs(Collections.emptyList());
         }
 
         return builder.build();

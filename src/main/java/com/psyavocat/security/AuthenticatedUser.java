@@ -16,6 +16,8 @@ import java.util.Collections;
 @Getter
 public class AuthenticatedUser implements Serializable {
 
+    private static final long serialVersionUID = 1L;
+
     private final String firebaseUid;
     private final String email;
     private final Utilisateur utilisateur;

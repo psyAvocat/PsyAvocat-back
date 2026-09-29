@@ -18,7 +18,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -71,6 +70,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // Endpoint public de vérification de santé
                         .requestMatchers("/health").permitAll()
+                        // Consultation publique du catalogue et orientation onboarding
+                        .requestMatchers(HttpMethod.GET, "/api/orientation/questionnaires/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/questionnaires/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/orientation/evaluer").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/professionnels/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/disponibilites/professionnel/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/referentiels/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/specialites/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/domaines/**").permitAll()
                         // Tout autre endpoint nécessite une authentification Firebase valide
                         .anyRequest().authenticated()
                 )
@@ -81,7 +89,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList(allowedOrigins));
+        configuration.setAllowedOrigins(List.of(allowedOrigins));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
         configuration.setExposedHeaders(List.of("Authorization", "Content-Disposition"));

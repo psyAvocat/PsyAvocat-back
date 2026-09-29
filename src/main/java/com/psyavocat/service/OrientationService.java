@@ -11,7 +11,9 @@ import java.util.List;
  */
 public interface OrientationService {
 
-    List<QuestionnaireDTO> getQuestionnaires();
+    List<QuestionnaireDTO> getQuestionnaires(String type);
+
+    QuestionnaireDTO getQuestionnaireByType(String type);
 
     ResultatOrientationDTO evaluerQuestionnaire(SoumissionQuestionnaireRequest request);
 
