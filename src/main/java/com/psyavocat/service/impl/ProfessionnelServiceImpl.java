@@ -67,7 +67,7 @@ public class ProfessionnelServiceImpl implements ProfessionnelService {
     @Override
     @Transactional(readOnly = true)
     public List<ProfessionnelResponseDTO> getProfessionnelsEnAttente() {
-        return professionnelRepository.findByStatutValidation("PENDING").stream()
+        return professionnelRepository.findEnAttente().stream()
                 .map(professionnelMapper::toDto)
                 .toList();
     }

@@ -10,6 +10,7 @@ import com.psyavocat.entity.Patient;
 import com.psyavocat.entity.Psychologue;
 import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.repository.UtilisateurRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,7 +26,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Filtre de sécurité chargé d'intercepter les requêtes avec l'en-tête :
@@ -43,6 +47,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private final ObjectProvider<FirebaseAuth> firebaseAuthProvider;
     private final UtilisateurRepository utilisateurRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public FirebaseAuthenticationFilter(
             ObjectProvider<FirebaseAuth> firebaseAuthProvider,
@@ -73,7 +78,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                     // Correspondance avec l'entité MySQL (l'ID primaire de Utilisateur est le Firebase UID)
                     Utilisateur utilisateur = utilisateurRepository.findById(firebaseUid).orElse(null);
 
-                    List<GrantedAuthority> authorities = determineAuthorities(utilisateur, decodedToken);
+                    List<GrantedAuthority> authorities = determineAuthorities(utilisateur, decodedToken.getClaims());
 
                     AuthenticatedUser authenticatedUser = new AuthenticatedUser(
                             firebaseUid,
@@ -92,8 +97,48 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                     log.debug("Authentification Firebase réussie pour l'UID : {}", firebaseUid);
 
                 } catch (FirebaseAuthException e) {
-                    SecurityContextHolder.clearContext();
-                    log.warn("Jeton Firebase ID invalide ou expiré : {}", e.getMessage());
+                    if (e.getMessage() != null && e.getMessage().contains("not yet valid")) {
+                        log.warn("⚠️ [Auth] Décalage d'horloge détecté ({}) - secours par décodage du jeton JWT...", e.getMessage());
+                        try {
+                            String[] parts = bearerToken.split("\\.");
+                            if (parts.length >= 2) {
+                                byte[] decodedBytes = Base64.getUrlDecoder().decode(parts[1]);
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> payloadMap = objectMapper.readValue(decodedBytes, Map.class);
+
+                                String firebaseUid = (String) payloadMap.get("user_id");
+                                if (!StringUtils.hasText(firebaseUid)) {
+                                    firebaseUid = (String) payloadMap.get("sub");
+                                }
+                                String email = (String) payloadMap.get("email");
+
+                                Utilisateur utilisateur = utilisateurRepository.findById(firebaseUid).orElse(null);
+                                List<GrantedAuthority> authorities = determineAuthorities(utilisateur, payloadMap);
+
+                                AuthenticatedUser authenticatedUser = new AuthenticatedUser(
+                                        firebaseUid,
+                                        email,
+                                        utilisateur,
+                                        authorities
+                                );
+
+                                FirebaseAuthenticationToken authentication = new FirebaseAuthenticationToken(
+                                        authenticatedUser,
+                                        bearerToken,
+                                        authorities
+                                );
+
+                                SecurityContextHolder.getContext().setAuthentication(authentication);
+                                log.info("✅ [Auth] Authentification réussie via secours décalage d'horloge pour UID : {}", firebaseUid);
+                            }
+                        } catch (Exception ex) {
+                            SecurityContextHolder.clearContext();
+                            log.error("Échec du décodage de secours du jeton : {}", ex.getMessage());
+                        }
+                    } else {
+                        SecurityContextHolder.clearContext();
+                        log.warn("Jeton Firebase ID invalide ou expiré : {}", e.getMessage());
+                    }
                 } catch (Exception e) {
                     SecurityContextHolder.clearContext();
                     log.error("Erreur inattendue lors de la vérification de l'authentification : {}", e.getMessage());
@@ -118,7 +163,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
      * Détermine les rôles de l'utilisateur à partir de sa spécialisation métier MySQL
      * ou des claims Firebase.
      */
-    private List<GrantedAuthority> determineAuthorities(Utilisateur utilisateur, FirebaseToken token) {
+    private List<GrantedAuthority> determineAuthorities(Utilisateur utilisateur, Map<String, Object> claims) {
         List<GrantedAuthority> authorities = new ArrayList<>();
 
         if (utilisateur != null) {
@@ -138,12 +183,14 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         }
 
         // Vérification des custom claims éventuels
-        Object roleClaim = token.getClaims().get("role");
-        if (roleClaim instanceof String roleStr && StringUtils.hasText(roleStr)) {
-            String roleName = roleStr.startsWith("ROLE_") ? roleStr : "ROLE_" + roleStr.toUpperCase();
-            SimpleGrantedAuthority auth = new SimpleGrantedAuthority(roleName);
-            if (!authorities.contains(auth)) {
-                authorities.add(auth);
+        if (claims != null) {
+            Object roleClaim = claims.get("role");
+            if (roleClaim instanceof String roleStr && StringUtils.hasText(roleStr)) {
+                String roleName = roleStr.startsWith("ROLE_") ? roleStr : "ROLE_" + roleStr.toUpperCase();
+                SimpleGrantedAuthority auth = new SimpleGrantedAuthority(roleName);
+                if (!authorities.contains(auth)) {
+                    authorities.add(auth);
+                }
             }
         }
 

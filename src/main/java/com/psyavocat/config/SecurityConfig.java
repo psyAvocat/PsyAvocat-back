@@ -76,9 +76,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/orientation/evaluer").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/professionnels/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/disponibilites/professionnel/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/referentiels/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/specialites/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/domaines/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/referentiels", "/api/referentiels/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/specialites", "/api/specialites/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/domaines", "/api/domaines/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/categories-besoin", "/api/categories-besoin/**").permitAll()
                         // Tout autre endpoint nécessite une authentification Firebase valide
                         .anyRequest().authenticated()
                 )

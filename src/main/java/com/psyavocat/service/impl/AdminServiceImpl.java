@@ -46,7 +46,7 @@ public class AdminServiceImpl implements AdminService {
     public DashboardStatsDTO getDashboardStats() {
         long totalUsers = utilisateurRepository.count();
         long totalPros = professionnelRepository.count();
-        long prosEnAttente = professionnelRepository.findByStatutValidation("PENDING").size();
+        long prosEnAttente = professionnelRepository.findEnAttente().size();
         // Approximation pour le mois courant (on simplifie à count global pour éviter les complexités de date en JPA ici s'ils n'existent pas)
         long totalRdv = rendezVousRepository.count();
 
