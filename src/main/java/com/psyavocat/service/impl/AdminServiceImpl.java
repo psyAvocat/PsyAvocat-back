@@ -2,6 +2,7 @@ package com.psyavocat.service.impl;
 
 import com.psyavocat.dto.admin.DashboardStatsDTO;
 import com.psyavocat.dto.admin.UtilisateurResponseDTO;
+import com.psyavocat.dto.admin.SignalementResponseDTO;
 import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.entity.Professionnel;
 import com.psyavocat.entity.Signalement;

@@ -162,10 +162,18 @@ public class ProfilServiceImpl implements ProfilService {
             if (request.getVille() != null) pro.setVille(request.getVille());
             if (request.getAdresse() != null) pro.setAdresse(request.getAdresse());
             if (request.getModeConsultation() != null) pro.setModeConsultation(request.getModeConsultation());
+            if (request.getLangues() != null) pro.setLangues(request.getLangues());
+            if (request.getPhotoUrl() != null) pro.setPhotoUrl(request.getPhotoUrl());
 
             if (request.getSpecialiteIds() != null) {
                 List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
                 pro.setSpecialites(specialites);
+            }
+            
+            if (pro instanceof Avocat avocat && request.getNumeroBarreau() != null) {
+                avocat.setNumeroBarreau(request.getNumeroBarreau());
+            } else if (pro instanceof Psychologue psychologue && request.getNumeroAgrement() != null) {
+                psychologue.setNumeroAgrement(request.getNumeroAgrement());
             }
         }
 

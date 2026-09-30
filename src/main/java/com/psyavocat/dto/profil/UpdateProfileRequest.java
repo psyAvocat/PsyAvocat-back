@@ -23,4 +23,12 @@ public class UpdateProfileRequest {
     private String adresse;
     private String modeConsultation;
     private List<String> specialiteIds;
+    private String langues;
+    private String photoUrl;
+    
+    // Spécifique Avocat
+    private String numeroBarreau;
+    
+    // Spécifique Psychologue
+    private String numeroAgrement;
 }
