@@ -68,4 +68,39 @@ public class ReferentielServiceImpl implements ReferentielService {
         CategorieBesoin saved = categorieBesoinRepository.save(categorie);
         return new CategorieBesoinDTO(saved.getId(), saved.getNom(), saved.getDescription(), saved.getTypeProfessionnel(), saved.getActif());
     }
+
+    @Override
+    public SpecialiteDTO updateSpecialite(String id, SpecialiteDTO dto) {
+        Specialite specialite = specialiteRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Spécialité introuvable"));
+        specialite.setNom(dto.getNom());
+        specialite.setDescription(dto.getDescription());
+        Specialite saved = specialiteRepository.save(specialite);
+        return new SpecialiteDTO(saved.getId(), saved.getNom(), saved.getDescription());
+    }
+
+    @Override
+    public void deleteSpecialite(String id) {
+        specialiteRepository.deleteById(id);
+    }
+
+    @Override
+    public CategorieBesoinDTO updateCategorieBesoin(String id, CategorieBesoinDTO dto) {
+        CategorieBesoin categorie = categorieBesoinRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Catégorie introuvable"));
+        categorie.setNom(dto.getNom());
+        categorie.setDescription(dto.getDescription());
+        categorie.setTypeProfessionnel(dto.getTypeProfessionnel());
+        categorie.setActif(dto.getActif());
+        CategorieBesoin saved = categorieBesoinRepository.save(categorie);
+        return new CategorieBesoinDTO(saved.getId(), saved.getNom(), saved.getDescription(), saved.getTypeProfessionnel(), saved.getActif());
+    }
+
+    @Override
+    public void deleteCategorieBesoin(String id) {
+        CategorieBesoin categorie = categorieBesoinRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Catégorie introuvable"));
+        categorie.setActif(false);
+        categorieBesoinRepository.save(categorie);
+    }
 }

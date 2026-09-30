@@ -16,9 +16,21 @@ import java.util.List;
 public class AdminController {
 
     private final ProfessionnelService professionnelService;
+    private final com.psyavocat.service.AdminService adminService;
 
-    public AdminController(ProfessionnelService professionnelService) {
+    public AdminController(ProfessionnelService professionnelService, com.psyavocat.service.AdminService adminService) {
         this.professionnelService = professionnelService;
+        this.adminService = adminService;
+    }
+
+    @GetMapping("/utilisateurs")
+    public ResponseEntity<List<com.psyavocat.dto.admin.UtilisateurResponseDTO>> getAllUtilisateurs() {
+        return ResponseEntity.ok(adminService.getAllUtilisateurs());
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<com.psyavocat.dto.admin.DashboardStatsDTO> getDashboardStats() {
+        return ResponseEntity.ok(adminService.getDashboardStats());
     }
 
     @GetMapping("/professionnels/en-attente")

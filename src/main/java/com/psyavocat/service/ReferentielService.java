@@ -17,4 +17,12 @@ public interface ReferentielService {
     List<CategorieBesoinDTO> getCategoriesBesoin(String typeProfessionnel);
 
     CategorieBesoinDTO createCategorieBesoin(CategorieBesoinDTO dto);
+
+    SpecialiteDTO updateSpecialite(String id, SpecialiteDTO dto);
+
+    void deleteSpecialite(String id);
+
+    CategorieBesoinDTO updateCategorieBesoin(String id, CategorieBesoinDTO dto);
+
+    void deleteCategorieBesoin(String id);
 }

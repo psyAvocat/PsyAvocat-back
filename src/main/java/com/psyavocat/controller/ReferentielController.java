@@ -43,4 +43,30 @@ public class ReferentielController {
     public ResponseEntity<CategorieBesoinDTO> createCategorieBesoin(@RequestBody CategorieBesoinDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(referentielService.createCategorieBesoin(dto));
     }
+
+    @PutMapping("/specialites/{id}")
+    @PreAuthorize("hasRole('ADMINISTRATEUR')")
+    public ResponseEntity<SpecialiteDTO> updateSpecialite(@PathVariable String id, @RequestBody SpecialiteDTO dto) {
+        return ResponseEntity.ok(referentielService.updateSpecialite(id, dto));
+    }
+
+    @DeleteMapping("/specialites/{id}")
+    @PreAuthorize("hasRole('ADMINISTRATEUR')")
+    public ResponseEntity<Void> deleteSpecialite(@PathVariable String id) {
+        referentielService.deleteSpecialite(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/categories-besoin/{id}")
+    @PreAuthorize("hasRole('ADMINISTRATEUR')")
+    public ResponseEntity<CategorieBesoinDTO> updateCategorieBesoin(@PathVariable String id, @RequestBody CategorieBesoinDTO dto) {
+        return ResponseEntity.ok(referentielService.updateCategorieBesoin(id, dto));
+    }
+
+    @DeleteMapping("/categories-besoin/{id}")
+    @PreAuthorize("hasRole('ADMINISTRATEUR')")
+    public ResponseEntity<Void> deleteCategorieBesoin(@PathVariable String id) {
+        referentielService.deleteCategorieBesoin(id);
+        return ResponseEntity.noContent().build();
+    }
 }
