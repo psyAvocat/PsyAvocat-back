@@ -45,4 +45,16 @@ public class AdminController {
     ) {
         return ResponseEntity.ok(professionnelService.updateStatutValidation(id, request.getStatut()));
     }
+
+    @GetMapping("/signalements")
+    public ResponseEntity<List<com.psyavocat.dto.admin.SignalementResponseDTO>> getSignalementsActifs() {
+        return ResponseEntity.ok(adminService.getSignalementsActifs());
+    }
+
+    @PatchMapping("/signalements/{id}/statut")
+    public ResponseEntity<com.psyavocat.dto.admin.SignalementResponseDTO> traiterSignalement(
+            @PathVariable String id,
+            @RequestBody com.psyavocat.dto.admin.ActionSignalementRequest request) {
+        return ResponseEntity.ok(adminService.traiterSignalement(id, request.getAction()));
+    }
 }
