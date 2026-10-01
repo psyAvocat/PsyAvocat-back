@@ -8,6 +8,7 @@ import java.util.List;
 
 public interface AdminService {
     List<UtilisateurResponseDTO> getAllUtilisateurs();
+    UtilisateurResponseDTO getUtilisateurById(String id);
     DashboardStatsDTO getDashboardStats();
     List<SignalementResponseDTO> getSignalementsActifs();
     SignalementResponseDTO traiterSignalement(String id, String action);

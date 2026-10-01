@@ -43,6 +43,13 @@ public class AdminServiceImpl implements AdminService {
     }
 
     @Override
+    public UtilisateurResponseDTO getUtilisateurById(String id) {
+        return utilisateurRepository.findById(id)
+                .map(this::mapToDTO)
+                .orElseThrow(() -> new com.psyavocat.exception.ResourceNotFoundException("Utilisateur non trouvé avec l'id : " + id));
+    }
+
+    @Override
     public DashboardStatsDTO getDashboardStats() {
         long totalUsers = utilisateurRepository.count();
         long totalPros = professionnelRepository.count();

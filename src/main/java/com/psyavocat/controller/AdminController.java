@@ -28,6 +28,11 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getAllUtilisateurs());
     }
 
+    @GetMapping("/utilisateurs/{id}")
+    public ResponseEntity<com.psyavocat.dto.admin.UtilisateurResponseDTO> getUtilisateurById(@PathVariable String id) {
+        return ResponseEntity.ok(adminService.getUtilisateurById(id));
+    }
+
     @GetMapping("/stats")
     public ResponseEntity<com.psyavocat.dto.admin.DashboardStatsDTO> getDashboardStats() {
         return ResponseEntity.ok(adminService.getDashboardStats());
