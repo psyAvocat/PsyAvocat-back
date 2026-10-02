@@ -3,6 +3,7 @@ package com.psyavocat.service.impl;
 import com.psyavocat.dto.orientation.QuestionDTO;
 import com.psyavocat.dto.orientation.QuestionnaireDTO;
 import com.psyavocat.dto.orientation.ReponseDTO;
+import com.psyavocat.dto.orientation.ResultatOrientationCategorieDTO;
 import com.psyavocat.dto.orientation.ResultatOrientationDTO;
 import com.psyavocat.dto.orientation.SoumissionQuestionnaireRequest;
 import com.psyavocat.dto.professionnel.ProfessionnelResponseDTO;
@@ -13,6 +14,7 @@ import com.psyavocat.entity.Question;
 import com.psyavocat.entity.Questionnaire;
 import com.psyavocat.entity.Reponse;
 import com.psyavocat.entity.ResultatOrientation;
+import com.psyavocat.entity.ResultatOrientationCategorie;
 import com.psyavocat.entity.Specialite;
 import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.exception.BadRequestException;
@@ -23,6 +25,7 @@ import com.psyavocat.repository.PonderationOrientationRepository;
 import com.psyavocat.repository.QuestionRepository;
 import com.psyavocat.repository.QuestionnaireRepository;
 import com.psyavocat.repository.ReponseRepository;
+import com.psyavocat.repository.ResultatOrientationCategorieRepository;
 import com.psyavocat.repository.ResultatOrientationRepository;
 import com.psyavocat.repository.SpecialiteRepository;
 import com.psyavocat.repository.UtilisateurRepository;
@@ -61,6 +64,7 @@ public class OrientationServiceImpl implements OrientationService {
     private final ReponseRepository reponseRepository;
     private final PonderationOrientationRepository ponderationOrientationRepository;
     private final ResultatOrientationRepository resultatOrientationRepository;
+    private final ResultatOrientationCategorieRepository resultatCategorieRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final CategorieBesoinRepository categorieBesoinRepository;
     private final SpecialiteRepository specialiteRepository;
@@ -74,6 +78,7 @@ public class OrientationServiceImpl implements OrientationService {
             ReponseRepository reponseRepository,
             PonderationOrientationRepository ponderationOrientationRepository,
             ResultatOrientationRepository resultatOrientationRepository,
+            ResultatOrientationCategorieRepository resultatCategorieRepository,
             UtilisateurRepository utilisateurRepository,
             CategorieBesoinRepository categorieBesoinRepository,
             SpecialiteRepository specialiteRepository,
@@ -86,6 +91,7 @@ public class OrientationServiceImpl implements OrientationService {
         this.reponseRepository = reponseRepository;
         this.ponderationOrientationRepository = ponderationOrientationRepository;
         this.resultatOrientationRepository = resultatOrientationRepository;
+        this.resultatCategorieRepository = resultatCategorieRepository;
         this.utilisateurRepository = utilisateurRepository;
         this.categorieBesoinRepository = categorieBesoinRepository;
         this.specialiteRepository = specialiteRepository;
@@ -292,6 +298,31 @@ public class OrientationServiceImpl implements OrientationService {
         // 12. Enregistrer le résultat
         resultat = resultatOrientationRepository.save(resultat);
 
+        // 12bis. Persister le classement complet multi-catégories (uniquement pour les questionnaires PSY)
+        if ("PSYCHOLOGIQUE".equalsIgnoreCase(questionnaire.getType())) {
+            Map<CategorieBesoin, Integer> scoresParCat = new HashMap<>();
+            for (PonderationOrientation p : ponderations) {
+                if (p.getCategorieBesoin() != null) {
+                    scoresParCat.merge(p.getCategorieBesoin(), p.getPoids(), Integer::sum);
+                }
+            }
+            List<Map.Entry<CategorieBesoin, Integer>> classement = scoresParCat.entrySet().stream()
+                    .sorted(Map.Entry.<CategorieBesoin, Integer>comparingByValue().reversed())
+                    .toList();
+
+            final ResultatOrientation savedResultat = resultat;
+            for (int i = 0; i < classement.size(); i++) {
+                ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
+                roc.setResultatOrientation(savedResultat);
+                roc.setCategorieBesoin(classement.get(i).getKey());
+                roc.setScore(classement.get(i).getValue());
+                roc.setRang(i + 1);
+                resultatCategorieRepository.save(roc);
+            }
+            // Recharger avec les scores persistés
+            resultat = resultatOrientationRepository.findById(resultat.getId()).orElse(resultat);
+        }
+
         // 14. Retourner le Response DTO
         return toResultatDto(resultat, statutDepartage);
     }
@@ -355,6 +386,7 @@ public class OrientationServiceImpl implements OrientationService {
                         .libelle(r.getLibelle())
                         .valeur(r.getValeur())
                         .poids(r.getPoids())
+                        .questionId(quest.getId())
                         .build())
                 .toList() : Collections.emptyList();
 
@@ -374,6 +406,20 @@ public class OrientationServiceImpl implements OrientationService {
                         .map(professionnelMapper::toDto)
                         .toList() : Collections.emptyList();
 
+        // Mapper le classement complet multi-catégories
+        List<ResultatOrientationCategorieDTO> scoresDto = r.getScoresParCategorie() != null ?
+                r.getScoresParCategorie().stream()
+                        .sorted(Comparator.comparingInt(ResultatOrientationCategorie::getRang))
+                        .map(roc -> ResultatOrientationCategorieDTO.builder()
+                                .id(roc.getId())
+                                .categorieBesoinId(roc.getCategorieBesoin() != null ? roc.getCategorieBesoin().getId() : null)
+                                .categorieBesoinNom(roc.getCategorieBesoin() != null ? roc.getCategorieBesoin().getNom() : null)
+                                .categorieBesoinDescription(roc.getCategorieBesoin() != null ? roc.getCategorieBesoin().getDescription() : null)
+                                .score(roc.getScore())
+                                .rang(roc.getRang())
+                                .build())
+                        .toList() : Collections.emptyList();
+
         return ResultatOrientationDTO.builder()
                 .id(r.getId())
                 .dateEvaluation(r.getDateEvaluation())
@@ -390,6 +436,7 @@ public class OrientationServiceImpl implements OrientationService {
                 .specialiteDescription(r.getSpecialite() != null ? r.getSpecialite().getDescription() : null)
                 .domaineNom(r.getSpecialite() != null && r.getSpecialite().getDomaine() != null ?
                         r.getSpecialite().getDomaine().getNom() : null)
+                .scoresParCategorie(scoresDto)
                 .professionnelsRecommandes(prosDto)
                 .build();
     }

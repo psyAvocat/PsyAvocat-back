@@ -47,6 +47,10 @@ public class AuthController {
         response.put("prenom", user.getPrenom());
         response.put("roles", roles);
 
+        if (user.getUtilisateur() instanceof com.psyavocat.entity.Professionnel pro) {
+            response.put("statutValidation", pro.getStatutValidation());
+        }
+
         return ResponseEntity.ok(response);
     }
 }

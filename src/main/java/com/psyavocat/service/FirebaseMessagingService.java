@@ -1,13 +1,19 @@
 package com.psyavocat.service;
 
-import com.google.firebase.messaging.*;
-import lombok.extern.slf4j.Slf4j;
+import java.util.List;
+import java.util.Map;
+
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import com.google.firebase.messaging.BatchResponse;
+import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.firebase.messaging.FirebaseMessagingException;
+import com.google.firebase.messaging.Message;
+import com.google.firebase.messaging.MulticastMessage;
+import com.google.firebase.messaging.Notification;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Service d'envoi de notifications Firebase Cloud Messaging (FCM) côté backend.

@@ -18,6 +18,7 @@ import com.psyavocat.repository.PonderationOrientationRepository;
 import com.psyavocat.repository.QuestionRepository;
 import com.psyavocat.repository.QuestionnaireRepository;
 import com.psyavocat.repository.ReponseRepository;
+import com.psyavocat.repository.ResultatOrientationCategorieRepository;
 import com.psyavocat.repository.ResultatOrientationRepository;
 import com.psyavocat.repository.SpecialiteRepository;
 import com.psyavocat.repository.UtilisateurRepository;
@@ -57,6 +58,9 @@ class OrientationServiceTest {
     private ResultatOrientationRepository resultatOrientationRepository;
 
     @Mock
+    private ResultatOrientationCategorieRepository resultatOrientationCategorieRepository;
+
+    @Mock
     private UtilisateurRepository utilisateurRepository;
 
     @Mock
@@ -88,6 +92,7 @@ class OrientationServiceTest {
                 reponseRepository,
                 ponderationOrientationRepository,
                 resultatOrientationRepository,
+                resultatOrientationCategorieRepository,
                 utilisateurRepository,
                 categorieBesoinRepository,
                 specialiteRepository,
