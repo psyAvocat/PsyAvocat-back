@@ -18,4 +18,8 @@ public interface ProfilService {
     UserProfileResponse createPsychologueProfile(CreatePsychologueRequest request);
 
     UserProfileResponse updateProfile(UpdateProfileRequest request);
+
+    UserProfileResponse uploadPhotoProfil(org.springframework.web.multipart.MultipartFile file);
+
+    UserProfileResponse supprimerPhotoProfil();
 }

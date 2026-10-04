@@ -28,6 +28,8 @@ public abstract class Professionnel extends Utilisateur {
 
     private String photoUrl;
 
+    private String photoPublicId;
+
     private Double noteMoyenne;
 
     private Integer nombreAvis;

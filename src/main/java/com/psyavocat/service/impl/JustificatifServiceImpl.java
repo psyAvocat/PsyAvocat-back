@@ -5,11 +5,16 @@ import com.psyavocat.entity.JustificatifProfessionnel;
 import com.psyavocat.entity.Professionnel;
 import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.exception.BadRequestException;
+import com.psyavocat.exception.ForbiddenException;
 import com.psyavocat.exception.ResourceNotFoundException;
 import com.psyavocat.repository.JustificatifProfessionnelRepository;
 import com.psyavocat.repository.UtilisateurRepository;
 import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.JustificatifService;
+import com.psyavocat.storage.model.StoredDocument;
+import com.psyavocat.storage.service.DocumentStorageService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
@@ -23,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -32,25 +38,30 @@ import java.util.stream.Collectors;
 @Transactional
 public class JustificatifServiceImpl implements JustificatifService {
 
+    private static final Logger log = LoggerFactory.getLogger(JustificatifServiceImpl.class);
+
     private final JustificatifProfessionnelRepository justificatifRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final AuthenticationContext authenticationContext;
+    private final DocumentStorageService documentStorageService;
     private final Path fileStorageLocation;
 
     public JustificatifServiceImpl(
             JustificatifProfessionnelRepository justificatifRepository,
             UtilisateurRepository utilisateurRepository,
-            AuthenticationContext authenticationContext
+            AuthenticationContext authenticationContext,
+            DocumentStorageService documentStorageService
     ) {
         this.justificatifRepository = justificatifRepository;
         this.utilisateurRepository = utilisateurRepository;
         this.authenticationContext = authenticationContext;
+        this.documentStorageService = documentStorageService;
         this.fileStorageLocation = Paths.get("uploads/justificatifs").toAbsolutePath().normalize();
 
         try {
             Files.createDirectories(this.fileStorageLocation);
         } catch (Exception ex) {
-            throw new RuntimeException("Could not create the directory where the uploaded files will be stored.", ex);
+            log.warn("Impossible d'initialiser le répertoire local de justificatifs : {}", ex.getMessage());
         }
     }
 
@@ -64,37 +75,49 @@ public class JustificatifServiceImpl implements JustificatifService {
             throw new BadRequestException("Seul un professionnel peut uploader un justificatif.");
         }
 
-        if (file.isEmpty()) {
-            throw new BadRequestException("Fichier vide.");
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("Fichier manquant ou vide.");
         }
 
-        String originalFileName = StringUtils.cleanPath(file.getOriginalFilename());
+        String originalFileName = StringUtils.cleanPath(file.getOriginalFilename() != null ? file.getOriginalFilename() : "document");
         if (originalFileName.contains("..")) {
-            throw new BadRequestException("Sorry! Filename contains invalid path sequence " + originalFileName);
+            throw new BadRequestException("Nom de fichier invalide (séquence de chemin non autorisée).");
         }
-        
-        String fileExtension = "";
-        int i = originalFileName.lastIndexOf('.');
-        if (i > 0) {
-            fileExtension = originalFileName.substring(i);
-        }
-        
-        String newFileName = UUID.randomUUID().toString() + fileExtension;
-        Path targetLocation = this.fileStorageLocation.resolve(newFileName);
 
-        try {
-            Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException ex) {
-            throw new RuntimeException("Could not store file " + originalFileName + ". Please try again!", ex);
+        String fileExtension = "";
+        int extIndex = originalFileName.lastIndexOf('.');
+        if (extIndex > 0) {
+            fileExtension = originalFileName.substring(extIndex);
         }
+
+        // Clé objet sécurisée générée par le backend : justificatifs/professionnel/{proId}/{uuid}.ext
+        String uniqueId = UUID.randomUUID().toString();
+        String cleObjet = "justificatifs/professionnel/" + professionnel.getId() + "/" + uniqueId + fileExtension;
 
         JustificatifProfessionnel justif = new JustificatifProfessionnel();
         justif.setNomFichier(originalFileName);
         justif.setTypeDocument(typeDocument);
-        justif.setCheminStockage(targetLocation.toString());
         justif.setStatutValidation("EN_ATTENTE");
         justif.setDateDepot(LocalDate.now());
         justif.setProfessionnel(professionnel);
+        justif.setTailleOctets(file.getSize());
+        justif.setTypeMime(file.getContentType());
+
+        if (documentStorageService.isAvailable()) {
+            StoredDocument stored = documentStorageService.uploadDocument(file, cleObjet);
+            justif.setCleObjet(stored.getCleObjet());
+            justif.setCheminStockage("r2://" + stored.getCleObjet());
+        } else {
+            // Mode de secours local (si R2 non configuré en dev)
+            log.warn("Cloudflare R2 non disponible, enregistrement sur disque local en mode dégradé");
+            Path targetLocation = this.fileStorageLocation.resolve(uniqueId + fileExtension);
+            try {
+                Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+                justif.setCheminStockage(targetLocation.toString());
+            } catch (IOException ex) {
+                throw new RuntimeException("Impossible d'enregistrer le fichier sur le disque : " + originalFileName, ex);
+            }
+        }
 
         JustificatifProfessionnel saved = justificatifRepository.save(justif);
         return mapToDto(saved);
@@ -123,14 +146,14 @@ public class JustificatifServiceImpl implements JustificatifService {
         JustificatifProfessionnel justif = justificatifRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Justificatif introuvable"));
 
-        String uid = authenticationContext.getRequiredFirebaseUid();
-        boolean isAdmin = authenticationContext.getCurrentUser().get().getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRATEUR"));
+        verifierAccesDocument(justif);
 
-        if (!isAdmin && !justif.getProfessionnel().getId().equals(uid)) {
-            throw new BadRequestException("Vous n'êtes pas autorisé à accéder à ce document.");
+        // Si stocké sur Cloudflare R2
+        if (justif.getCleObjet() != null && !justif.getCleObjet().isBlank() && documentStorageService.isAvailable()) {
+            return documentStorageService.downloadDocument(justif.getCleObjet(), justif.getNomFichier());
         }
 
+        // Sinon fallback sur le stockage local (fichiers existants / mode dégradé)
         try {
             Path filePath = Paths.get(justif.getCheminStockage()).normalize();
             Resource resource = new UrlResource(filePath.toUri());
@@ -140,11 +163,69 @@ public class JustificatifServiceImpl implements JustificatifService {
                 throw new ResourceNotFoundException("Fichier introuvable sur le disque");
             }
         } catch (MalformedURLException ex) {
-            throw new ResourceNotFoundException("Fichier introuvable sur le disque: " + ex.getMessage());
+            throw new ResourceNotFoundException("Fichier introuvable sur le disque : " + ex.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String getPresignedUrl(String id) {
+        JustificatifProfessionnel justif = justificatifRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Justificatif introuvable"));
+
+        verifierAccesDocument(justif);
+
+        if (justif.getCleObjet() != null && !justif.getCleObjet().isBlank() && documentStorageService.isAvailable()) {
+            return documentStorageService.generatePresignedDownloadUrl(justif.getCleObjet(), Duration.ofMinutes(15));
+        }
+
+        return null;
+    }
+
+    @Override
+    public void deleteJustificatif(String id) {
+        JustificatifProfessionnel justif = justificatifRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Justificatif introuvable"));
+
+        verifierAccesDocument(justif);
+
+        // Suppression de R2 si présent
+        if (justif.getCleObjet() != null && !justif.getCleObjet().isBlank() && documentStorageService.isAvailable()) {
+            documentStorageService.deleteDocument(justif.getCleObjet());
+        } else if (justif.getCheminStockage() != null && !justif.getCheminStockage().startsWith("r2://")) {
+            // Suppression fichier local
+            try {
+                Path localPath = Paths.get(justif.getCheminStockage());
+                Files.deleteIfExists(localPath);
+            } catch (Exception ex) {
+                log.warn("Impossible de supprimer le fichier local : {}", ex.getMessage());
+            }
+        }
+
+        justificatifRepository.delete(justif);
+        log.info("Justificatif supprimé avec succès : id={}", id);
+    }
+
+    private void verifierAccesDocument(JustificatifProfessionnel justif) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        boolean isAdmin = authenticationContext.getCurrentAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRATEUR"));
+
+        if (!isAdmin && !justif.getProfessionnel().getId().equals(uid)) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à ce document.");
         }
     }
 
     private JustificatifResponseDTO mapToDto(JustificatifProfessionnel justif) {
+        String presignedUrl = null;
+        if (justif.getCleObjet() != null && documentStorageService.isAvailable()) {
+            try {
+                presignedUrl = documentStorageService.generatePresignedDownloadUrl(justif.getCleObjet(), Duration.ofMinutes(15));
+            } catch (Exception e) {
+                log.debug("Impossible de générer l'URL présignée dans mapToDto: {}", e.getMessage());
+            }
+        }
+
         return JustificatifResponseDTO.builder()
                 .id(justif.getId())
                 .nomFichier(justif.getNomFichier())
@@ -152,6 +233,9 @@ public class JustificatifServiceImpl implements JustificatifService {
                 .statutValidation(justif.getStatutValidation())
                 .dateDepot(justif.getDateDepot())
                 .professionnelId(justif.getProfessionnel().getId())
+                .tailleOctets(justif.getTailleOctets())
+                .typeMime(justif.getTypeMime())
+                .urlVisualisation(presignedUrl)
                 .build();
     }
 }

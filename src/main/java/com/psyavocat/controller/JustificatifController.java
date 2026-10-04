@@ -50,4 +50,19 @@ public class JustificatifController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
                 .body(resource);
     }
+
+    @GetMapping("/{id}/url")
+    public ResponseEntity<java.util.Map<String, String>> getPresignedUrl(@PathVariable String id) {
+        String presignedUrl = justificatifService.getPresignedUrl(id);
+        if (presignedUrl == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(java.util.Map.of("url", presignedUrl));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteJustificatif(@PathVariable String id) {
+        justificatifService.deleteJustificatif(id);
+        return ResponseEntity.noContent().build();
+    }
 }

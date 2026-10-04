@@ -18,4 +18,7 @@ public class JustificatifResponseDTO {
     private String statutValidation;
     private LocalDate dateDepot;
     private String professionnelId;
+    private Long tailleOctets;
+    private String typeMime;
+    private String urlVisualisation; // URL présignée temporaire (durée de vie limitée)
 }

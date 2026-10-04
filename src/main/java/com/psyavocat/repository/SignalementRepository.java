@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface SignalementRepository extends JpaRepository<Signalement, String> {
     List<Signalement> findByStatut(String statut);
+
+    long countByStatut(String statut);
 }

@@ -14,4 +14,7 @@ public interface SoumissionDossierRepository extends JpaRepository<SoumissionDos
     List<SoumissionDossier> findByAvocatIdOrderByDateSoumissionDesc(String avocatId);
 
     List<SoumissionDossier> findByAvocatIdAndStatutOrderByDateSoumissionDesc(String avocatId, String statut);
+
+    @org.springframework.data.jpa.repository.Query("SELECT s.statut, COUNT(s) FROM SoumissionDossier s WHERE s.avocat.id = :avocatId GROUP BY s.statut")
+    List<Object[]> compterParStatutPourAvocat(@org.springframework.data.repository.query.Param("avocatId") String avocatId);
 }

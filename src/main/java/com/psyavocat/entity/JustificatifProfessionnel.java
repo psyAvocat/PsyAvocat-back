@@ -29,6 +29,12 @@ public class JustificatifProfessionnel {
     @Column(nullable = false)
     private String statutValidation; // EN_ATTENTE, VALIDE, REJETE
 
+    private Long tailleOctets;
+
+    private String typeMime;
+
+    private String cleObjet; // Clé Cloudflare R2: justificatifs/professionnel/{proId}/{uuid}.ext
+
     private LocalDate dateDepot;
 
     @ManyToOne(fetch = FetchType.LAZY)

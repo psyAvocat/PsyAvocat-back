@@ -17,10 +17,14 @@ public class AdminController {
 
     private final ProfessionnelService professionnelService;
     private final com.psyavocat.service.AdminService adminService;
+    private final com.psyavocat.service.AdminStatistiquesService adminStatistiquesService;
 
-    public AdminController(ProfessionnelService professionnelService, com.psyavocat.service.AdminService adminService) {
+    public AdminController(ProfessionnelService professionnelService,
+                           com.psyavocat.service.AdminService adminService,
+                           com.psyavocat.service.AdminStatistiquesService adminStatistiquesService) {
         this.professionnelService = professionnelService;
         this.adminService = adminService;
+        this.adminStatistiquesService = adminStatistiquesService;
     }
 
     @GetMapping("/utilisateurs")
@@ -35,7 +39,17 @@ public class AdminController {
 
     @GetMapping("/stats")
     public ResponseEntity<com.psyavocat.dto.admin.DashboardStatsDTO> getDashboardStats() {
-        return ResponseEntity.ok(adminService.getDashboardStats());
+        return ResponseEntity.ok(adminStatistiquesService.getDashboardStats());
+    }
+
+    /**
+     * Jeux de données réels pour les graphiques admin (séries mensuelles + répartitions).
+     * @param mois nombre de mois couverts par les séries (3 à 24, défaut 12).
+     */
+    @GetMapping("/stats/details")
+    public ResponseEntity<com.psyavocat.dto.admin.StatistiquesDetailleesDTO> getStatistiquesDetaillees(
+            @RequestParam(name = "mois", defaultValue = "12") int mois) {
+        return ResponseEntity.ok(adminStatistiquesService.getStatistiquesDetaillees(mois));
     }
 
     @GetMapping("/professionnels/en-attente")

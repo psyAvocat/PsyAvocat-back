@@ -11,4 +11,6 @@ public interface JustificatifService {
     List<JustificatifResponseDTO> getMyJustificatifs();
     List<JustificatifResponseDTO> getJustificatifsByProfessionnel(String professionnelId);
     Resource downloadJustificatif(String id);
+    String getPresignedUrl(String id);
+    void deleteJustificatif(String id);
 }

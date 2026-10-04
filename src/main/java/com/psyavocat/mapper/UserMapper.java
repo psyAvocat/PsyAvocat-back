@@ -48,7 +48,9 @@ public class UserMapper {
                 .ville(pro.getVille())
                 .adresse(pro.getAdresse())
                 .modeConsultation(pro.getModeConsultation())
-                .statutValidation(pro.getStatutValidation());
+                .statutValidation(pro.getStatutValidation())
+                .photoUrl(pro.getPhotoUrl())
+                .langues(pro.getLangues());
 
         if (pro.getSpecialites() != null) {
             List<SpecialiteDTO> specDtos = pro.getSpecialites().stream()

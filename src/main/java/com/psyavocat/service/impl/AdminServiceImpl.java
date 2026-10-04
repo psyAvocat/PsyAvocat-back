@@ -1,6 +1,5 @@
 package com.psyavocat.service.impl;
 
-import com.psyavocat.dto.admin.DashboardStatsDTO;
 import com.psyavocat.dto.admin.UtilisateurResponseDTO;
 import com.psyavocat.dto.admin.SignalementResponseDTO;
 import com.psyavocat.entity.Utilisateur;
@@ -8,12 +7,10 @@ import com.psyavocat.entity.Professionnel;
 import com.psyavocat.entity.Signalement;
 import com.psyavocat.repository.ProfessionnelRepository;
 import com.psyavocat.repository.UtilisateurRepository;
-import com.psyavocat.repository.RendezVousRepository;
 import com.psyavocat.repository.SignalementRepository;
 import com.psyavocat.service.AdminService;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -22,16 +19,13 @@ public class AdminServiceImpl implements AdminService {
 
     private final UtilisateurRepository utilisateurRepository;
     private final ProfessionnelRepository professionnelRepository;
-    private final RendezVousRepository rendezVousRepository;
     private final SignalementRepository signalementRepository;
 
     public AdminServiceImpl(UtilisateurRepository utilisateurRepository,
                             ProfessionnelRepository professionnelRepository,
-                            RendezVousRepository rendezVousRepository,
                             SignalementRepository signalementRepository) {
         this.utilisateurRepository = utilisateurRepository;
         this.professionnelRepository = professionnelRepository;
-        this.rendezVousRepository = rendezVousRepository;
         this.signalementRepository = signalementRepository;
     }
 
@@ -47,22 +41,6 @@ public class AdminServiceImpl implements AdminService {
         return utilisateurRepository.findById(id)
                 .map(this::mapToDTO)
                 .orElseThrow(() -> new com.psyavocat.exception.ResourceNotFoundException("Utilisateur non trouvé avec l'id : " + id));
-    }
-
-    @Override
-    public DashboardStatsDTO getDashboardStats() {
-        long totalUsers = utilisateurRepository.count();
-        long totalPros = professionnelRepository.count();
-        long prosEnAttente = professionnelRepository.findEnAttente().size();
-        // Approximation pour le mois courant (on simplifie à count global pour éviter les complexités de date en JPA ici s'ils n'existent pas)
-        long totalRdv = rendezVousRepository.count();
-
-        return DashboardStatsDTO.builder()
-                .totalUtilisateurs(totalUsers)
-                .totalProfessionnels(totalPros)
-                .professionnelsEnAttente(prosEnAttente)
-                .rendezVousMoisCourant(totalRdv) // A adapter
-                .build();
     }
 
     private UtilisateurResponseDTO mapToDTO(Utilisateur user) {

@@ -38,4 +38,8 @@ public class UserProfileResponse {
 
     // Spécifique Psychologue
     private String numeroAgrement;
+
+    // Média & Préférences
+    private String photoUrl;
+    private String langues;
 }

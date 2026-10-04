@@ -49,6 +49,11 @@ public class AuthController {
 
         if (user.getUtilisateur() instanceof com.psyavocat.entity.Professionnel pro) {
             response.put("statutValidation", pro.getStatutValidation());
+            if (pro instanceof com.psyavocat.entity.Avocat) {
+                response.put("typeProfessionnel", "AVOCAT");
+            } else if (pro instanceof com.psyavocat.entity.Psychologue) {
+                response.put("typeProfessionnel", "PSYCHOLOGUE");
+            }
         }
 
         return ResponseEntity.ok(response);

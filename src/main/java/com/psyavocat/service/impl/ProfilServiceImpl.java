@@ -27,6 +27,7 @@ public class ProfilServiceImpl implements ProfilService {
     private final PsychologueRepository psychologueRepository;
     private final SpecialiteRepository specialiteRepository;
     private final UserMapper userMapper;
+    private final com.psyavocat.storage.service.ImageStorageService imageStorageService;
 
     public ProfilServiceImpl(
             AuthenticationContext authenticationContext,
@@ -36,7 +37,8 @@ public class ProfilServiceImpl implements ProfilService {
             AvocatRepository avocatRepository,
             PsychologueRepository psychologueRepository,
             SpecialiteRepository specialiteRepository,
-            UserMapper userMapper
+            UserMapper userMapper,
+            com.psyavocat.storage.service.ImageStorageService imageStorageService
     ) {
         this.authenticationContext = authenticationContext;
         this.utilisateurRepository = utilisateurRepository;
@@ -46,6 +48,7 @@ public class ProfilServiceImpl implements ProfilService {
         this.psychologueRepository = psychologueRepository;
         this.specialiteRepository = specialiteRepository;
         this.userMapper = userMapper;
+        this.imageStorageService = imageStorageService;
     }
 
     @Override
@@ -178,6 +181,50 @@ public class ProfilServiceImpl implements ProfilService {
         }
 
         Utilisateur saved = utilisateurRepository.save(utilisateur);
+        return userMapper.toProfileResponse(saved);
+    }
+
+    @Override
+    public UserProfileResponse uploadPhotoProfil(org.springframework.web.multipart.MultipartFile file) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Utilisateur utilisateur = utilisateurRepository.findById(uid)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
+
+        if (!(utilisateur instanceof Professionnel pro)) {
+            throw new com.psyavocat.exception.BadRequestException("Seul un professionnel peut enregistrer une photo de profil.");
+        }
+
+        // Supprime l'ancienne photo de Cloudinary si un identifiant existait
+        if (pro.getPhotoPublicId() != null && !pro.getPhotoPublicId().isBlank()) {
+            imageStorageService.deleteImage(pro.getPhotoPublicId());
+        }
+
+        com.psyavocat.storage.model.StoredImage stored = imageStorageService.uploadImage(file, "avatars", pro.getId());
+        pro.setPhotoUrl(stored.getUrl());
+        pro.setPhotoPublicId(stored.getPublicId());
+
+        Professionnel saved = utilisateurRepository.save(pro);
+        return userMapper.toProfileResponse(saved);
+    }
+
+    @Override
+    public UserProfileResponse supprimerPhotoProfil() {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Utilisateur utilisateur = utilisateurRepository.findById(uid)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
+
+        if (!(utilisateur instanceof Professionnel pro)) {
+            throw new com.psyavocat.exception.BadRequestException("Seul un professionnel peut gérer sa photo de profil.");
+        }
+
+        if (pro.getPhotoPublicId() != null && !pro.getPhotoPublicId().isBlank()) {
+            imageStorageService.deleteImage(pro.getPhotoPublicId());
+        }
+
+        pro.setPhotoUrl(null);
+        pro.setPhotoPublicId(null);
+
+        Professionnel saved = utilisateurRepository.save(pro);
         return userMapper.toProfileResponse(saved);
     }
 
