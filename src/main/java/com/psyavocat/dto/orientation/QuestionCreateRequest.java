@@ -25,6 +25,10 @@ public class QuestionCreateRequest {
 
     private Boolean obligatoire;
 
+    private String contexte;
+
+    private String typeReponse;
+
     @NotBlank(message = "L'identifiant du questionnaire est obligatoire")
     private String questionnaireId;
 
@@ -37,6 +41,8 @@ public class QuestionCreateRequest {
         private String code;
         private Integer ordre;
         private Boolean obligatoire;
+        private String contexte;
+        private String typeReponse;
         private String questionnaireId;
 
         public QuestionCreateRequestBuilder texte(String texte) {
@@ -59,6 +65,16 @@ public class QuestionCreateRequest {
             return this;
         }
 
+        public QuestionCreateRequestBuilder contexte(String contexte) {
+            this.contexte = contexte;
+            return this;
+        }
+
+        public QuestionCreateRequestBuilder typeReponse(String typeReponse) {
+            this.typeReponse = typeReponse;
+            return this;
+        }
+
         public QuestionCreateRequestBuilder questionnaireId(String questionnaireId) {
             this.questionnaireId = questionnaireId;
             return this;
@@ -70,6 +86,8 @@ public class QuestionCreateRequest {
             obj.code = this.code;
             obj.ordre = this.ordre;
             obj.obligatoire = this.obligatoire;
+            obj.contexte = this.contexte;
+            obj.typeReponse = this.typeReponse;
             obj.questionnaireId = this.questionnaireId;
             return obj;
         }

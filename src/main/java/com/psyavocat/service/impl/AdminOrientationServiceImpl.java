@@ -2,6 +2,7 @@ package com.psyavocat.service.impl;
 
 import com.psyavocat.dto.orientation.PonderationCreateRequest;
 import com.psyavocat.dto.orientation.PonderationDTO;
+import com.psyavocat.dto.orientation.QuestionCompleteCreateRequest;
 import com.psyavocat.dto.orientation.QuestionCreateRequest;
 import com.psyavocat.dto.orientation.QuestionDTO;
 import com.psyavocat.dto.orientation.QuestionnaireCreateRequest;
@@ -31,7 +32,9 @@ import org.springframework.util.StringUtils;
 
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -101,6 +104,11 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
     public void deleteQuestionnaire(String id) {
         Questionnaire q = questionnaireRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + id));
+        if (q.getResultats() != null && !q.getResultats().isEmpty()) {
+            throw new BadRequestException("Impossible de supprimer ce questionnaire car il possède un historique de "
+                    + q.getResultats().size() + " résultat(s) d'évaluation de patients/justiciables. "
+                    + "Veuillez désactiver le questionnaire pour qu'il ne soit plus proposé aux utilisateurs.");
+        }
         log.info("Admin: suppression questionnaire [{}]", id);
         questionnaireRepository.delete(q);
     }
@@ -143,11 +151,85 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
         q.setCode(StringUtils.hasText(request.getCode()) ? request.getCode().trim() : null);
         q.setOrdre(request.getOrdre());
         q.setObligatoire(request.getObligatoire() != null ? request.getObligatoire() : false);
+        q.setContexte(StringUtils.hasText(request.getContexte()) ? request.getContexte().trim() : null);
+        q.setTypeReponse(StringUtils.hasText(request.getTypeReponse()) ? request.getTypeReponse().trim() : "CHOIX_UNIQUE");
         q.setQuestionnaire(questionnaire);
 
         Question saved = questionRepository.save(q);
         log.info("Admin: question créée [{}] dans questionnaire [{}]", saved.getId(), request.getQuestionnaireId());
         return toQuestionDTO(saved);
+    }
+
+    @Override
+    public QuestionDTO createQuestionComplete(QuestionCompleteCreateRequest request) {
+        Questionnaire questionnaire = questionnaireRepository.findById(request.getQuestionnaireId())
+                .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + request.getQuestionnaireId()));
+
+        if (StringUtils.hasText(request.getCode()) &&
+                questionRepository.existsByQuestionnaireIdAndCode(request.getQuestionnaireId(), request.getCode())) {
+            throw new BadRequestException("Une question avec ce code existe déjà dans ce questionnaire");
+        }
+
+        Question q = new Question();
+        q.setTexte(request.getTexte().trim());
+        q.setCode(StringUtils.hasText(request.getCode()) ? request.getCode().trim() : null);
+        q.setOrdre(request.getOrdre());
+        q.setObligatoire(request.getObligatoire() != null ? request.getObligatoire() : false);
+        q.setContexte(StringUtils.hasText(request.getContexte()) ? request.getContexte().trim() : null);
+        q.setTypeReponse(StringUtils.hasText(request.getTypeReponse()) ? request.getTypeReponse().trim() : "CHOIX_UNIQUE");
+        q.setQuestionnaire(questionnaire);
+
+        Question savedQuestion = questionRepository.save(q);
+
+        if (request.getReponses() != null && !request.getReponses().isEmpty()) {
+            for (QuestionCompleteCreateRequest.ReponseCompleteItemRequest repReq : request.getReponses()) {
+                if (!StringUtils.hasText(repReq.getLibelle())) continue;
+
+                Reponse r = new Reponse();
+                r.setLibelle(repReq.getLibelle().trim());
+                r.setCode(StringUtils.hasText(repReq.getCode()) ? repReq.getCode().trim() : null);
+                r.setValeur(repReq.getValeur());
+                r.setQuestion(savedQuestion);
+                Reponse savedRep = reponseRepository.save(r);
+
+                if (repReq.getPonderations() != null && !repReq.getPonderations().isEmpty()) {
+                    Set<String> seenCategories = new HashSet<>();
+                    Set<String> seenSpecialites = new HashSet<>();
+
+                    for (QuestionCompleteCreateRequest.PonderationItemRequest pondReq : repReq.getPonderations()) {
+                        validerCiblePonderation(questionnaire.getType(), pondReq.getCategorieBesoinId(), pondReq.getSpecialiteId());
+
+                        PonderationOrientation pond = new PonderationOrientation();
+                        pond.setReponse(savedRep);
+                        pond.setPoids(pondReq.getPoids() != null ? pondReq.getPoids() : 0);
+
+                        if (StringUtils.hasText(pondReq.getCategorieBesoinId())) {
+                            if (!seenCategories.add(pondReq.getCategorieBesoinId())) {
+                                throw new BadRequestException("Une même catégorie ne peut pas être pondérée plusieurs fois pour la réponse « " + repReq.getLibelle() + " »");
+                            }
+                            CategorieBesoin cat = categorieBesoinRepository.findById(pondReq.getCategorieBesoinId())
+                                    .orElseThrow(() -> new ResourceNotFoundException("Catégorie introuvable : " + pondReq.getCategorieBesoinId()));
+                            pond.setCategorieBesoin(cat);
+                        }
+
+                        if (StringUtils.hasText(pondReq.getSpecialiteId())) {
+                            if (!seenSpecialites.add(pondReq.getSpecialiteId())) {
+                                throw new BadRequestException("Une même spécialité ne peut pas être pondérée plusieurs fois pour la réponse « " + repReq.getLibelle() + " »");
+                            }
+                            Specialite spec = specialiteRepository.findById(pondReq.getSpecialiteId())
+                                    .orElseThrow(() -> new ResourceNotFoundException("Spécialité introuvable : " + pondReq.getSpecialiteId()));
+                            pond.setSpecialite(spec);
+                        }
+
+                        savedRep.getPonderations().add(ponderationOrientationRepository.save(pond));
+                    }
+                }
+                savedQuestion.getReponses().add(savedRep);
+            }
+        }
+
+        log.info("Admin: question complète créée [{}] avec {} réponses", savedQuestion.getId(), savedQuestion.getReponses().size());
+        return toQuestionDTO(savedQuestion);
     }
 
     @Override
@@ -164,6 +246,12 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
         if (request.getObligatoire() != null) {
             q.setObligatoire(request.getObligatoire());
         }
+        if (request.getContexte() != null) {
+            q.setContexte(StringUtils.hasText(request.getContexte()) ? request.getContexte().trim() : null);
+        }
+        if (StringUtils.hasText(request.getTypeReponse())) {
+            q.setTypeReponse(request.getTypeReponse().trim());
+        }
         // Réaffectation à un autre questionnaire si demandé
         if (StringUtils.hasText(request.getQuestionnaireId())) {
             Questionnaire questionnaire = questionnaireRepository.findById(request.getQuestionnaireId())
@@ -171,6 +259,90 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
             q.setQuestionnaire(questionnaire);
         }
         return toQuestionDTO(questionRepository.save(q));
+    }
+
+    @Override
+    public QuestionDTO updateQuestionComplete(String id, QuestionCompleteCreateRequest request) {
+        Question q = questionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Question introuvable : " + id));
+
+        Questionnaire questionnaire = q.getQuestionnaire();
+        if (StringUtils.hasText(request.getQuestionnaireId()) &&
+                (questionnaire == null || !request.getQuestionnaireId().equals(questionnaire.getId()))) {
+            questionnaire = questionnaireRepository.findById(request.getQuestionnaireId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + request.getQuestionnaireId()));
+            q.setQuestionnaire(questionnaire);
+        }
+
+        q.setTexte(request.getTexte().trim());
+        if (StringUtils.hasText(request.getCode())) {
+            q.setCode(request.getCode().trim());
+        }
+        if (request.getOrdre() != null) {
+            q.setOrdre(request.getOrdre());
+        }
+        if (request.getObligatoire() != null) {
+            q.setObligatoire(request.getObligatoire());
+        }
+        q.setContexte(StringUtils.hasText(request.getContexte()) ? request.getContexte().trim() : null);
+        if (StringUtils.hasText(request.getTypeReponse())) {
+            q.setTypeReponse(request.getTypeReponse().trim());
+        }
+
+        // Vider les anciennes réponses pour reconstruire proprement la question
+        q.getReponses().clear();
+        questionRepository.saveAndFlush(q);
+
+        if (request.getReponses() != null && !request.getReponses().isEmpty()) {
+            for (QuestionCompleteCreateRequest.ReponseCompleteItemRequest repReq : request.getReponses()) {
+                if (!StringUtils.hasText(repReq.getLibelle())) continue;
+
+                Reponse r = new Reponse();
+                r.setLibelle(repReq.getLibelle().trim());
+                r.setCode(StringUtils.hasText(repReq.getCode()) ? repReq.getCode().trim() : null);
+                r.setValeur(repReq.getValeur());
+                r.setQuestion(q);
+                Reponse savedRep = reponseRepository.save(r);
+
+                if (repReq.getPonderations() != null && !repReq.getPonderations().isEmpty()) {
+                    Set<String> seenCategories = new HashSet<>();
+                    Set<String> seenSpecialites = new HashSet<>();
+
+                    for (QuestionCompleteCreateRequest.PonderationItemRequest pondReq : repReq.getPonderations()) {
+                        validerCiblePonderation(questionnaire.getType(), pondReq.getCategorieBesoinId(), pondReq.getSpecialiteId());
+
+                        PonderationOrientation pond = new PonderationOrientation();
+                        pond.setReponse(savedRep);
+                        pond.setPoids(pondReq.getPoids() != null ? pondReq.getPoids() : 0);
+
+                        if (StringUtils.hasText(pondReq.getCategorieBesoinId())) {
+                            if (!seenCategories.add(pondReq.getCategorieBesoinId())) {
+                                throw new BadRequestException("Une même catégorie ne peut pas être pondérée plusieurs fois pour la réponse « " + repReq.getLibelle() + " »");
+                            }
+                            CategorieBesoin cat = categorieBesoinRepository.findById(pondReq.getCategorieBesoinId())
+                                    .orElseThrow(() -> new ResourceNotFoundException("Catégorie introuvable : " + pondReq.getCategorieBesoinId()));
+                            pond.setCategorieBesoin(cat);
+                        }
+
+                        if (StringUtils.hasText(pondReq.getSpecialiteId())) {
+                            if (!seenSpecialites.add(pondReq.getSpecialiteId())) {
+                                throw new BadRequestException("Une même spécialité ne peut pas être pondérée plusieurs fois pour la réponse « " + repReq.getLibelle() + " »");
+                            }
+                            Specialite spec = specialiteRepository.findById(pondReq.getSpecialiteId())
+                                    .orElseThrow(() -> new ResourceNotFoundException("Spécialité introuvable : " + pondReq.getSpecialiteId()));
+                            pond.setSpecialite(spec);
+                        }
+
+                        savedRep.getPonderations().add(ponderationOrientationRepository.save(pond));
+                    }
+                }
+                q.getReponses().add(savedRep);
+            }
+        }
+
+        Question updated = questionRepository.save(q);
+        log.info("Admin: question complète mise à jour [{}]", id);
+        return toQuestionDTO(updated);
     }
 
     @Override
@@ -267,12 +439,17 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
 
     @Override
     public PonderationDTO createPonderation(PonderationCreateRequest request) {
-        if (!StringUtils.hasText(request.getCategorieBesoinId()) && !StringUtils.hasText(request.getSpecialiteId())) {
-            throw new BadRequestException("Une pondération doit cibler soit une catégorie de besoin, soit une spécialité");
-        }
-
         Reponse reponse = reponseRepository.findById(request.getReponseId())
                 .orElseThrow(() -> new ResourceNotFoundException("Réponse introuvable : " + request.getReponseId()));
+
+        Questionnaire questionnaire = reponse.getQuestion() != null ? reponse.getQuestion().getQuestionnaire() : null;
+        if (questionnaire != null) {
+            validerCiblePonderation(questionnaire.getType(), request.getCategorieBesoinId(), request.getSpecialiteId());
+        } else {
+            if (!StringUtils.hasText(request.getCategorieBesoinId()) && !StringUtils.hasText(request.getSpecialiteId())) {
+                throw new BadRequestException("Une pondération doit cibler soit une catégorie de besoin, soit une spécialité");
+            }
+        }
 
         PonderationOrientation p = new PonderationOrientation();
         p.setReponse(reponse);
@@ -301,6 +478,32 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
         PonderationOrientation saved = ponderationOrientationRepository.save(p);
         log.info("Admin: pondération créée [{}] reponse=[{}] poids={}", saved.getId(), request.getReponseId(), request.getPoids());
         return toPonderationDTO(saved);
+    }
+
+    private void validerCiblePonderation(String typeQuestionnaire, String categorieBesoinId, String specialiteId) {
+        if (!StringUtils.hasText(categorieBesoinId) && !StringUtils.hasText(specialiteId)) {
+            throw new BadRequestException("Une pondération doit obligatoirement avoir une cible (catégorie de besoin ou spécialité).");
+        }
+        if (StringUtils.hasText(categorieBesoinId) && StringUtils.hasText(specialiteId)) {
+            throw new BadRequestException("Une pondération ne peut pas cibler simultanément une catégorie de besoin et une spécialité.");
+        }
+        if ("PSYCHOLOGIQUE".equalsIgnoreCase(typeQuestionnaire)) {
+            if (!StringUtils.hasText(categorieBesoinId)) {
+                throw new BadRequestException("Pour un questionnaire psychologique, la pondération doit obligatoirement cibler une catégorie de besoin.");
+            }
+            if (StringUtils.hasText(specialiteId)) {
+                throw new BadRequestException("Pour un questionnaire psychologique, une spécialité juridique ne peut pas être ciblée.");
+            }
+        } else if ("JURIDIQUE".equalsIgnoreCase(typeQuestionnaire)) {
+            if (!StringUtils.hasText(specialiteId)) {
+                throw new BadRequestException("Pour un questionnaire juridique, la pondération doit obligatoirement cibler une spécialité.");
+            }
+            if (StringUtils.hasText(categorieBesoinId)) {
+                throw new BadRequestException("Pour un questionnaire juridique, une catégorie de besoin ne peut pas être ciblée.");
+            }
+        } else if (typeQuestionnaire != null) {
+            throw new BadRequestException("Type de questionnaire non supporté : " + typeQuestionnaire);
+        }
     }
 
     @Override
@@ -360,6 +563,8 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
                 .texte(q.getTexte())
                 .ordre(q.getOrdre())
                 .obligatoire(q.getObligatoire())
+                .contexte(q.getContexte())
+                .typeReponse(q.getTypeReponse())
                 .reponses(reponsesDto)
                 .build();
     }

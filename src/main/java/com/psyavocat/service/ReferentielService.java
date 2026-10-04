@@ -29,9 +29,13 @@ public interface ReferentielService {
 
     List<CategorieBesoinDTO> getCategoriesBesoin(String typeProfessionnel);
 
+    List<CategorieBesoinDTO> getCategoriesBesoin(String typeProfessionnel, boolean includeInactive);
+
     CategorieBesoinDTO createCategorieBesoin(CategorieBesoinDTO dto);
 
     CategorieBesoinDTO updateCategorieBesoin(String id, CategorieBesoinDTO dto);
+
+    CategorieBesoinDTO toggleActifCategorieBesoin(String id);
 
     void deleteCategorieBesoin(String id);
 }

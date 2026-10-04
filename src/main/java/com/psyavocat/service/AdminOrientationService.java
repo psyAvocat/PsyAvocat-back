@@ -41,7 +41,11 @@ public interface AdminOrientationService {
 
     QuestionDTO createQuestion(QuestionCreateRequest request);
 
+    QuestionDTO createQuestionComplete(com.psyavocat.dto.orientation.QuestionCompleteCreateRequest request);
+
     QuestionDTO updateQuestion(String id, QuestionCreateRequest request);
+
+    QuestionDTO updateQuestionComplete(String id, com.psyavocat.dto.orientation.QuestionCompleteCreateRequest request);
 
     void deleteQuestion(String id);
 

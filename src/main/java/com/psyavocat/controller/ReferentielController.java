@@ -83,9 +83,16 @@ public class ReferentielController {
 
     @GetMapping("/categories-besoin")
     public ResponseEntity<List<CategorieBesoinDTO>> getCategoriesBesoin(
-            @RequestParam(required = false) String typeProfessionnel
+            @RequestParam(required = false) String typeProfessionnel,
+            @RequestParam(required = false, defaultValue = "false") boolean includeInactive
     ) {
-        return ResponseEntity.ok(referentielService.getCategoriesBesoin(typeProfessionnel));
+        return ResponseEntity.ok(referentielService.getCategoriesBesoin(typeProfessionnel, includeInactive));
+    }
+
+    @PatchMapping("/categories-besoin/{id}/toggle-actif")
+    @PreAuthorize("hasRole('ADMINISTRATEUR')")
+    public ResponseEntity<CategorieBesoinDTO> toggleActifCategorieBesoin(@PathVariable String id) {
+        return ResponseEntity.ok(referentielService.toggleActifCategorieBesoin(id));
     }
 
     @PostMapping("/categories-besoin")

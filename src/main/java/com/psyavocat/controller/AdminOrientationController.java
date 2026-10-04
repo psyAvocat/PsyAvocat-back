@@ -2,6 +2,7 @@ package com.psyavocat.controller;
 
 import com.psyavocat.dto.orientation.PonderationCreateRequest;
 import com.psyavocat.dto.orientation.PonderationDTO;
+import com.psyavocat.dto.orientation.QuestionCompleteCreateRequest;
 import com.psyavocat.dto.orientation.QuestionCreateRequest;
 import com.psyavocat.dto.orientation.QuestionDTO;
 import com.psyavocat.dto.orientation.QuestionnaireCreateRequest;
@@ -87,11 +88,25 @@ public class AdminOrientationController {
                 .body(adminOrientationService.createQuestion(request));
     }
 
+    @PostMapping("/questions/complete")
+    public ResponseEntity<QuestionDTO> createQuestionComplete(
+            @Valid @RequestBody QuestionCompleteCreateRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(adminOrientationService.createQuestionComplete(request));
+    }
+
     @PutMapping("/questions/{id}")
     public ResponseEntity<QuestionDTO> updateQuestion(
             @PathVariable String id,
             @Valid @RequestBody QuestionCreateRequest request) {
         return ResponseEntity.ok(adminOrientationService.updateQuestion(id, request));
+    }
+
+    @PutMapping("/questions/{id}/complete")
+    public ResponseEntity<QuestionDTO> updateQuestionComplete(
+            @PathVariable String id,
+            @Valid @RequestBody QuestionCompleteCreateRequest request) {
+        return ResponseEntity.ok(adminOrientationService.updateQuestionComplete(id, request));
     }
 
     @DeleteMapping("/questions/{id}")

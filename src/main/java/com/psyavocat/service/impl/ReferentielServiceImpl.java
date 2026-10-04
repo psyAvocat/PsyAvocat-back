@@ -177,11 +177,27 @@ public class ReferentielServiceImpl implements ReferentielService {
     @Override
     @Transactional(readOnly = true)
     public List<CategorieBesoinDTO> getCategoriesBesoin(String typeProfessionnel) {
+        return getCategoriesBesoin(typeProfessionnel, false);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CategorieBesoinDTO> getCategoriesBesoin(String typeProfessionnel, boolean includeInactive) {
         List<CategorieBesoin> list;
-        if (typeProfessionnel != null && !typeProfessionnel.isBlank()) {
-            list = categorieBesoinRepository.findByActifTrueAndTypeProfessionnel(typeProfessionnel);
+        if (includeInactive) {
+            if (typeProfessionnel != null && !typeProfessionnel.isBlank()) {
+                list = categorieBesoinRepository.findAll().stream()
+                        .filter(c -> typeProfessionnel.equalsIgnoreCase(c.getTypeProfessionnel()))
+                        .toList();
+            } else {
+                list = categorieBesoinRepository.findAll();
+            }
         } else {
-            list = categorieBesoinRepository.findByActifTrue();
+            if (typeProfessionnel != null && !typeProfessionnel.isBlank()) {
+                list = categorieBesoinRepository.findByActifTrueAndTypeProfessionnel(typeProfessionnel);
+            } else {
+                list = categorieBesoinRepository.findByActifTrue();
+            }
         }
         return list.stream()
                 .map(c -> new CategorieBesoinDTO(c.getId(), c.getNom(), c.getDescription(), c.getTypeProfessionnel(), c.getActif()))
@@ -206,7 +222,18 @@ public class ReferentielServiceImpl implements ReferentielService {
         categorie.setNom(dto.getNom().trim());
         categorie.setDescription(dto.getDescription());
         categorie.setTypeProfessionnel(dto.getTypeProfessionnel());
-        categorie.setActif(dto.getActif());
+        if (dto.getActif() != null) {
+            categorie.setActif(dto.getActif());
+        }
+        CategorieBesoin saved = categorieBesoinRepository.save(categorie);
+        return new CategorieBesoinDTO(saved.getId(), saved.getNom(), saved.getDescription(), saved.getTypeProfessionnel(), saved.getActif());
+    }
+
+    @Override
+    public CategorieBesoinDTO toggleActifCategorieBesoin(String id) {
+        CategorieBesoin categorie = categorieBesoinRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Catégorie introuvable : " + id));
+        categorie.setActif(categorie.getActif() == null || !categorie.getActif());
         CategorieBesoin saved = categorieBesoinRepository.save(categorie);
         return new CategorieBesoinDTO(saved.getId(), saved.getNom(), saved.getDescription(), saved.getTypeProfessionnel(), saved.getActif());
     }
