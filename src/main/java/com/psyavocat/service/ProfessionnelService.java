@@ -21,4 +21,6 @@ public interface ProfessionnelService {
     List<ProfessionnelResponseDTO> getProfessionnelsEnAttente();
 
     ProfessionnelResponseDTO updateStatutValidation(String id, String nouveauStatut);
+    ProfessionnelResponseDTO updateStatutValidation(String id, String nouveauStatut, String motif);
 }
+

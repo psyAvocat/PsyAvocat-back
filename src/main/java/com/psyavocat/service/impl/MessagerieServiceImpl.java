@@ -49,7 +49,6 @@ public class MessagerieServiceImpl implements MessagerieService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public List<MessageResponseDTO> getMessages(String conversationId) {
         String uid = authenticationContext.getRequiredFirebaseUid();
         Conversation conv = conversationRepository.findById(conversationId)
@@ -60,7 +59,19 @@ public class MessagerieServiceImpl implements MessagerieService {
             throw new ForbiddenException("Vous ne faites pas partie de cette conversation");
         }
 
-        return messageContactRepository.findByConversationIdOrderByDateEnvoiAsc(conversationId).stream()
+        List<MessageContact> messages = messageContactRepository.findByConversationIdOrderByDateEnvoiAsc(conversationId);
+        boolean updated = false;
+        for (MessageContact m : messages) {
+            if (m.getExpediteur() != null && !m.getExpediteur().getId().equals(uid) && (m.getLu() == null || !m.getLu())) {
+                m.setLu(true);
+                updated = true;
+            }
+        }
+        if (updated) {
+            messageContactRepository.saveAll(messages);
+        }
+
+        return messages.stream()
                 .map(this::toMessageDto)
                 .toList();
     }
@@ -120,6 +131,13 @@ public class MessagerieServiceImpl implements MessagerieService {
         return toMessageDto(saved);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public long getNombreMessagesNonLus() {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        return messageContactRepository.countUnreadMessagesForUser(uid);
+    }
+
     private ConversationResponseDTO toConversationDto(Conversation c, String currentUserId) {
         Utilisateur correspondant = c.getParticipants().stream()
                 .filter(p -> !p.getId().equals(currentUserId))
@@ -132,6 +150,12 @@ public class MessagerieServiceImpl implements MessagerieService {
             dernierMsg = toMessageDto(last);
         }
 
+        long nonLus = (c.getMessages() != null)
+                ? c.getMessages().stream()
+                    .filter(m -> m.getExpediteur() != null && !m.getExpediteur().getId().equals(currentUserId) && (m.getLu() == null || !m.getLu()))
+                    .count()
+                : 0L;
+
         List<String> participantIds = c.getParticipants().stream().map(Utilisateur::getId).toList();
 
         return ConversationResponseDTO.builder()
@@ -143,6 +167,7 @@ public class MessagerieServiceImpl implements MessagerieService {
                 .correspondantNom(correspondant != null ? correspondant.getNom() : null)
                 .correspondantPrenom(correspondant != null ? correspondant.getPrenom() : null)
                 .dernierMessage(dernierMsg)
+                .messagesNonLus(nonLus)
                 .build();
     }
 
@@ -152,7 +177,8 @@ public class MessagerieServiceImpl implements MessagerieService {
                 .conversationId(m.getConversation() != null ? m.getConversation().getId() : null)
                 .objet(m.getObjet())
                 .contenu(m.getContenu())
-                .dateEnvoi(m.getDateEnvoi());
+                .dateEnvoi(m.getDateEnvoi())
+                .lu(m.getLu() != null ? m.getLu() : false);
 
         if (m.getExpediteur() != null) {
             builder.expediteurId(m.getExpediteur().getId())

@@ -54,8 +54,8 @@ public class ReferentielController {
     // =========================================================================
 
     @GetMapping("/specialites")
-    public ResponseEntity<List<SpecialiteDTO>> getSpecialites() {
-        return ResponseEntity.ok(referentielService.getAllSpecialites());
+    public ResponseEntity<List<SpecialiteDTO>> getSpecialites(@RequestParam(required = false) String type) {
+        return ResponseEntity.ok(referentielService.getSpecialites(type));
     }
 
     @PostMapping("/specialites")

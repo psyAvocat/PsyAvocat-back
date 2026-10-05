@@ -24,4 +24,5 @@ public class ConversationResponseDTO {
     private String correspondantNom;
     private String correspondantPrenom;
     private MessageResponseDTO dernierMessage;
+    private Long messagesNonLus;
 }

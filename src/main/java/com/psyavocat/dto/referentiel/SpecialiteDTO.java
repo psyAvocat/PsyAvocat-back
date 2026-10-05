@@ -17,6 +17,7 @@ public class SpecialiteDTO {
     private String description;
     private String domaineId;
     private String domaineNom;
+    private String typeProfessionnel;
     private List<String> categorieIds;
     private List<CategorieBesoinDTO> categories;
 

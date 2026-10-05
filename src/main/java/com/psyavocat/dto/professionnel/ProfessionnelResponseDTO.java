@@ -28,7 +28,9 @@ public class ProfessionnelResponseDTO {
     private String adresse;
     private String modeConsultation;
     private String statutValidation; // PENDING, APPROVED, REJECTED, SUSPENDED
+    private String motifRefus;
     private String numeroBarreau;
+
     private String numeroAgrement;
     private String photoUrl;
     private Double noteMoyenne;

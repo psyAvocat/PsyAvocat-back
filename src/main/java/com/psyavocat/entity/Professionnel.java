@@ -26,7 +26,11 @@ public abstract class Professionnel extends Utilisateur {
 
     private String statutValidation;
 
+    @Column(columnDefinition = "TEXT")
+    private String motifRefus;
+
     private String photoUrl;
+
 
     @Column(name = "photo_object_key")
     private String photoObjectKey;

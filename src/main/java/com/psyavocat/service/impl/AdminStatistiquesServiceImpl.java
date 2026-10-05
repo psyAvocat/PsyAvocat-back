@@ -87,8 +87,10 @@ public class AdminStatistiquesServiceImpl implements AdminStatistiquesService {
                 moisCourant.atDay(1).atStartOfDay(),
                 moisCourant.plusMonths(1).atDay(1).atStartOfDay());
 
+        long totalClients = patientRepository.count() + justiciableRepository.count();
+
         return DashboardStatsDTO.builder()
-                .totalUtilisateurs(utilisateurRepository.count())
+                .totalUtilisateurs(totalClients)
                 .totalProfessionnels(professionnelRepository.count())
                 .professionnelsEnAttente(statutsPros.getOrDefault(STATUT_EN_ATTENTE, 0L))
                 .professionnelsValides(statutsPros.getOrDefault(STATUT_VALIDE, 0L))
@@ -97,6 +99,7 @@ public class AdminStatistiquesServiceImpl implements AdminStatistiquesService {
                 .signalementsEnAttente(signalementRepository.countByStatut(SIGNALEMENT_EN_ATTENTE))
                 .build();
     }
+
 
     @Override
     public StatistiquesDetailleesDTO getStatistiquesDetaillees(int periodeMois) {
@@ -186,9 +189,10 @@ public class AdminStatistiquesServiceImpl implements AdminStatistiquesService {
         profils.put("JUSTICIABLE", justiciableRepository.count());
         profils.put("PSYCHOLOGUE", psychologueRepository.count());
         profils.put("AVOCAT", avocatRepository.count());
-        profils.put("ADMINISTRATEUR", administrateurRepository.count());
+        // L'Administrateur est formellement exclu des statistiques utilisateurs (Règle 27)
         return versRepartition(profils);
     }
+
 
     /** Tri décroissant ; les catégories à 0 sont omises (pas de part vide dans les graphiques). */
     private static List<RepartitionDTO> versRepartition(Map<String, Long> valeurs) {

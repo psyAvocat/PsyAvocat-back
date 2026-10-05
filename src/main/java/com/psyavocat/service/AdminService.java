@@ -13,4 +13,6 @@ public interface AdminService {
     UtilisateurResponseDTO getUtilisateurById(String id);
     List<SignalementResponseDTO> getSignalementsActifs();
     SignalementResponseDTO traiterSignalement(String id, String action);
+    UtilisateurResponseDTO toggleStatutUtilisateur(String id, boolean actif);
 }
+

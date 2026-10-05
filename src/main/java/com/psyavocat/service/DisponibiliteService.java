@@ -12,6 +12,8 @@ public interface DisponibiliteService {
 
     DisponibiliteResponseDTO createDisponibilite(CreateDisponibiliteRequest request);
 
+    List<DisponibiliteResponseDTO> createDisponibilitesBatch(List<CreateDisponibiliteRequest> requests);
+
     List<DisponibiliteResponseDTO> getMyDisponibilites();
 
     void deleteDisponibilite(String id);

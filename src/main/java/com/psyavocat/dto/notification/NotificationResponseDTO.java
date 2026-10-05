@@ -17,4 +17,5 @@ public class NotificationResponseDTO {
     private String contenu;
     private LocalDateTime dateEnvoi;
     private String lienVisio;
+    private boolean lu;
 }

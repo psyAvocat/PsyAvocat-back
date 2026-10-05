@@ -22,6 +22,18 @@ public class NotificationController {
         return ResponseEntity.ok(notificationService.getMesNotifications());
     }
 
+    @PatchMapping("/{id}/lu")
+    public ResponseEntity<Void> markAsRead(@PathVariable String id) {
+        notificationService.markAsRead(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/lu-tout")
+    public ResponseEntity<Void> markAllAsRead() {
+        notificationService.markAllAsRead();
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteNotification(@PathVariable String id) {
         notificationService.deleteNotification(id);

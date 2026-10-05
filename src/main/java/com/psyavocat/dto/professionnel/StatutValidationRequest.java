@@ -12,4 +12,7 @@ public class StatutValidationRequest {
 
     @NotBlank(message = "Le statut est obligatoire (PENDING, APPROVED, REJECTED, SUSPENDED)")
     private String statut;
+
+    private String motif;
 }
+

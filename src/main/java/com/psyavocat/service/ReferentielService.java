@@ -20,6 +20,7 @@ public interface ReferentielService {
     void deleteDomaine(String id);
 
     List<SpecialiteDTO> getAllSpecialites();
+    List<SpecialiteDTO> getSpecialites(String typeProfessionnel);
 
     SpecialiteDTO createSpecialite(SpecialiteDTO dto);
 

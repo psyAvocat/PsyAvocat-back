@@ -21,4 +21,5 @@ public class MessageResponseDTO {
     private String objet;
     private String contenu;
     private LocalDateTime dateEnvoi;
+    private Boolean lu;
 }

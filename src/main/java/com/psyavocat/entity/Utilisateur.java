@@ -35,6 +35,10 @@ public abstract class Utilisateur {
 
     private LocalDate dateInscription;
 
+    @Column(nullable = false)
+    private Boolean actif = true;
+
+
     @OneToMany(mappedBy = "client")
     private List<RendezVous> rendezVous = new ArrayList<>();
 

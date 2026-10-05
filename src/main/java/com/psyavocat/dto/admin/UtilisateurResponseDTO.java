@@ -18,5 +18,7 @@ public class UtilisateurResponseDTO {
     private String email;
     private String telephone;
     private LocalDate dateInscription;
-    private String typeUtilisateur; // Administrateur, Patient, Justiciable, Avocat, Psychologue
+    private String typeUtilisateur; // Patient, Justiciable
+    private Boolean actif;
 }
+

@@ -30,7 +30,9 @@ public class ProfessionnelMapper {
                 .adresse(pro.getAdresse())
                 .modeConsultation(pro.getModeConsultation())
                 .statutValidation(pro.getStatutValidation())
+                .motifRefus(pro.getMotifRefus())
                 .photoUrl(pro.getPhotoUrl())
+
                 .noteMoyenne(pro.getNoteMoyenne())
                 .nombreAvis(pro.getNombreAvis())
                 .enLigne(pro.getEnLigne())

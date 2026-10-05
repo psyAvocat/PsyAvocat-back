@@ -9,6 +9,7 @@ import com.psyavocat.entity.Specialite;
 import com.psyavocat.repository.CategorieBesoinRepository;
 import com.psyavocat.repository.DomaineRepository;
 import com.psyavocat.repository.SpecialiteRepository;
+import com.psyavocat.exception.BadRequestException;
 import com.psyavocat.service.ReferentielService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -80,8 +81,17 @@ public class ReferentielServiceImpl implements ReferentielService {
 
     @Override
     public void deleteDomaine(String id) {
-        domaineRepository.deleteById(id);
+        Domaine domaine = domaineRepository.findById(id)
+                .orElseThrow(() -> new com.psyavocat.exception.ResourceNotFoundException("Domaine introuvable : " + id));
+
+        long count = specialiteRepository.countByDomaineId(id);
+        if (count > 0) {
+            throw new BadRequestException("Impossible de supprimer ce domaine : " + count + " spécialité(s) y sont rattachée(s). Veuillez d'abord modifier ou supprimer ces spécialités.");
+        }
+
+        domaineRepository.delete(domaine);
     }
+
 
     // =========================================================================
     // SPÉCIALITÉS
@@ -91,6 +101,22 @@ public class ReferentielServiceImpl implements ReferentielService {
     @Transactional(readOnly = true)
     public List<SpecialiteDTO> getAllSpecialites() {
         return specialiteRepository.findAll().stream()
+                .map(this::mapToSpecialiteDTO)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SpecialiteDTO> getSpecialites(String typeProfessionnel) {
+        if (!StringUtils.hasText(typeProfessionnel)) {
+            return getAllSpecialites();
+        }
+        String type = typeProfessionnel.trim().toUpperCase();
+        return specialiteRepository.findAll().stream()
+                .filter(s -> {
+                    String resolved = s.resolveTypeProfessionnel();
+                    return resolved != null && resolved.equalsIgnoreCase(type);
+                })
                 .map(this::mapToSpecialiteDTO)
                 .toList();
     }
@@ -151,6 +177,7 @@ public class ReferentielServiceImpl implements ReferentielService {
         dto.setId(s.getId());
         dto.setNom(s.getNom());
         dto.setDescription(s.getDescription());
+        dto.setTypeProfessionnel(s.resolveTypeProfessionnel());
 
         if (s.getDomaine() != null) {
             dto.setDomaineId(s.getDomaine().getId());

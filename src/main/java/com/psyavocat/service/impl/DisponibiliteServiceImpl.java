@@ -57,6 +57,27 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
     }
 
     @Override
+    public List<DisponibiliteResponseDTO> createDisponibilitesBatch(List<CreateDisponibiliteRequest> requests) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Professionnel pro = professionnelRepository.findById(uid)
+                .orElseThrow(() -> new ForbiddenException("Seul un professionnel peut définir ses disponibilités"));
+
+        java.util.List<Disponibilite> toSave = new java.util.ArrayList<>();
+        for (CreateDisponibiliteRequest req : requests) {
+            if (req.getHeureDebut() != null && req.getHeureFin() != null && req.getHeureDebut().isBefore(req.getHeureFin())) {
+                Disponibilite d = new Disponibilite();
+                d.setDate(req.getDate());
+                d.setHeureDebut(req.getHeureDebut());
+                d.setHeureFin(req.getHeureFin());
+                d.setStatut("LIBRE");
+                d.setProfessionnel(pro);
+                toSave.add(d);
+            }
+        }
+        return disponibiliteRepository.saveAll(toSave).stream().map(this::toDto).toList();
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<DisponibiliteResponseDTO> getMyDisponibilites() {
         String uid = authenticationContext.getRequiredFirebaseUid();

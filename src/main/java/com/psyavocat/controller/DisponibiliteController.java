@@ -25,6 +25,11 @@ public class DisponibiliteController {
         return ResponseEntity.status(HttpStatus.CREATED).body(disponibiliteService.createDisponibilite(request));
     }
 
+    @PostMapping("/batch")
+    public ResponseEntity<List<DisponibiliteResponseDTO>> createDisponibilitesBatch(@Valid @RequestBody List<CreateDisponibiliteRequest> requests) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(disponibiliteService.createDisponibilitesBatch(requests));
+    }
+
     @GetMapping("/me")
     public ResponseEntity<List<DisponibiliteResponseDTO>> getMyDisponibilites() {
         return ResponseEntity.ok(disponibiliteService.getMyDisponibilites());

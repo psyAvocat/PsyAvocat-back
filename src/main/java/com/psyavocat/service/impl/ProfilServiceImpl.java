@@ -28,6 +28,8 @@ public class ProfilServiceImpl implements ProfilService {
     private final SpecialiteRepository specialiteRepository;
     private final UserMapper userMapper;
     private final com.psyavocat.storage.service.ImageStorageService imageStorageService;
+    private final AdministrateurRepository administrateurRepository;
+    private final com.psyavocat.service.NotificationService notificationService;
 
     public ProfilServiceImpl(
             AuthenticationContext authenticationContext,
@@ -38,7 +40,9 @@ public class ProfilServiceImpl implements ProfilService {
             PsychologueRepository psychologueRepository,
             SpecialiteRepository specialiteRepository,
             UserMapper userMapper,
-            com.psyavocat.storage.service.ImageStorageService imageStorageService
+            com.psyavocat.storage.service.ImageStorageService imageStorageService,
+            AdministrateurRepository administrateurRepository,
+            com.psyavocat.service.NotificationService notificationService
     ) {
         this.authenticationContext = authenticationContext;
         this.utilisateurRepository = utilisateurRepository;
@@ -49,6 +53,8 @@ public class ProfilServiceImpl implements ProfilService {
         this.specialiteRepository = specialiteRepository;
         this.userMapper = userMapper;
         this.imageStorageService = imageStorageService;
+        this.administrateurRepository = administrateurRepository;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -115,10 +121,28 @@ public class ProfilServiceImpl implements ProfilService {
 
         if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
             List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
+            for (Specialite s : specialites) {
+                String resolved = s.resolveTypeProfessionnel();
+                if ("PSYCHOLOGUE".equalsIgnoreCase(resolved)) {
+                    throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un avocat.");
+                }
+            }
             avocat.setSpecialites(specialites);
         }
 
         Avocat saved = avocatRepository.save(avocat);
+
+        // Notification immédiate aux administrateurs
+        List<Administrateur> admins = administrateurRepository.findAll();
+        for (Administrateur admin : admins) {
+            notificationService.sendNotification(
+                admin.getId(),
+                "INSCRIPTION_PRO",
+                "Nouvelle demande d'inscription : " + saved.getPrenom() + " " + saved.getNom() + " (Avocat). Dossier en attente de vérification.",
+                null
+            );
+        }
+
         return userMapper.toProfileResponse(saved);
     }
 
@@ -143,10 +167,28 @@ public class ProfilServiceImpl implements ProfilService {
 
         if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
             List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
+            for (Specialite s : specialites) {
+                String resolved = s.resolveTypeProfessionnel();
+                if ("AVOCAT".equalsIgnoreCase(resolved)) {
+                    throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un psychologue.");
+                }
+            }
             psychologue.setSpecialites(specialites);
         }
 
         Psychologue saved = psychologueRepository.save(psychologue);
+
+        // Notification immédiate aux administrateurs
+        List<Administrateur> admins = administrateurRepository.findAll();
+        for (Administrateur admin : admins) {
+            notificationService.sendNotification(
+                admin.getId(),
+                "INSCRIPTION_PRO",
+                "Nouvelle demande d'inscription : " + saved.getPrenom() + " " + saved.getNom() + " (Psychologue). Dossier en attente de vérification.",
+                null
+            );
+        }
+
         return userMapper.toProfileResponse(saved);
     }
 
@@ -168,15 +210,24 @@ public class ProfilServiceImpl implements ProfilService {
             if (request.getLangues() != null) pro.setLangues(request.getLangues());
             if (request.getPhotoUrl() != null) pro.setPhotoUrl(request.getPhotoUrl());
 
-            if (request.getSpecialiteIds() != null) {
+            // Règle d'immutabilité : données sensibles protégées
+            if ("PENDING".equalsIgnoreCase(pro.getStatutValidation())) {
+                if (request.getSpecialiteIds() != null) {
+                    throw new com.psyavocat.exception.ForbiddenException("Modification des spécialités interdite pendant l'instruction du dossier.");
+                }
+            } else if (request.getSpecialiteIds() != null) {
                 List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
                 pro.setSpecialites(specialites);
             }
             
             if (pro instanceof Avocat avocat && request.getNumeroBarreau() != null) {
-                avocat.setNumeroBarreau(request.getNumeroBarreau());
+                if (avocat.getNumeroBarreau() != null && !avocat.getNumeroBarreau().trim().isEmpty() && !avocat.getNumeroBarreau().equals(request.getNumeroBarreau())) {
+                    throw new com.psyavocat.exception.ForbiddenException("Le numéro de barreau est une donnée certifiée et ne peut plus être modifié.");
+                }
             } else if (pro instanceof Psychologue psychologue && request.getNumeroAgrement() != null) {
-                psychologue.setNumeroAgrement(request.getNumeroAgrement());
+                if (psychologue.getNumeroAgrement() != null && !psychologue.getNumeroAgrement().trim().isEmpty() && !psychologue.getNumeroAgrement().equals(request.getNumeroAgrement())) {
+                    throw new com.psyavocat.exception.ForbiddenException("Le numéro d'agrément est une donnée certifiée et ne peut plus être modifié.");
+                }
             }
         }
 

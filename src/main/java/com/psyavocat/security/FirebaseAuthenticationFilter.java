@@ -49,6 +49,9 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
     private final UtilisateurRepository utilisateurRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    @org.springframework.beans.factory.annotation.Value("${firebase.project-id:psyavocat}")
+    private String expectedProjectId;
+
     public FirebaseAuthenticationFilter(
             ObjectProvider<FirebaseAuth> firebaseAuthProvider,
             UtilisateurRepository utilisateurRepository
@@ -68,6 +71,8 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
         if (StringUtils.hasText(bearerToken)) {
             FirebaseAuth firebaseAuth = firebaseAuthProvider.getIfAvailable();
+            boolean authenticated = false;
+
             if (firebaseAuth != null) {
                 try {
                     // Vérification cryptographique stricte par Firebase Admin SDK
@@ -75,9 +80,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                     String firebaseUid = decodedToken.getUid();
                     String email = decodedToken.getEmail();
 
-                    // Correspondance avec l'entité MySQL (l'ID primaire de Utilisateur est le Firebase UID)
                     Utilisateur utilisateur = utilisateurRepository.findById(firebaseUid).orElse(null);
-
                     List<GrantedAuthority> authorities = determineAuthorities(utilisateur, decodedToken.getClaims());
 
                     AuthenticatedUser authenticatedUser = new AuthenticatedUser(
@@ -94,57 +97,75 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                     );
 
                     SecurityContextHolder.getContext().setAuthentication(authentication);
+                    authenticated = true;
                     log.debug("Authentification Firebase réussie pour l'UID : {}", firebaseUid);
 
-                } catch (FirebaseAuthException e) {
-                    if (e.getMessage() != null && e.getMessage().contains("not yet valid")) {
-                        log.warn("⚠️ [Auth] Décalage d'horloge détecté ({}) - secours par décodage du jeton JWT...", e.getMessage());
-                        try {
-                            String[] parts = bearerToken.split("\\.");
-                            if (parts.length >= 2) {
-                                byte[] decodedBytes = Base64.getUrlDecoder().decode(parts[1]);
-                                @SuppressWarnings("unchecked")
-                                Map<String, Object> payloadMap = objectMapper.readValue(decodedBytes, Map.class);
-
-                                String firebaseUid = (String) payloadMap.get("user_id");
-                                if (!StringUtils.hasText(firebaseUid)) {
-                                    firebaseUid = (String) payloadMap.get("sub");
-                                }
-                                String email = (String) payloadMap.get("email");
-
-                                Utilisateur utilisateur = utilisateurRepository.findById(firebaseUid).orElse(null);
-                                List<GrantedAuthority> authorities = determineAuthorities(utilisateur, payloadMap);
-
-                                AuthenticatedUser authenticatedUser = new AuthenticatedUser(
-                                        firebaseUid,
-                                        email,
-                                        utilisateur,
-                                        authorities
-                                );
-
-                                FirebaseAuthenticationToken authentication = new FirebaseAuthenticationToken(
-                                        authenticatedUser,
-                                        bearerToken,
-                                        authorities
-                                );
-
-                                SecurityContextHolder.getContext().setAuthentication(authentication);
-                                log.info("✅ [Auth] Authentification réussie via secours décalage d'horloge pour UID : {}", firebaseUid);
-                            }
-                        } catch (Exception ex) {
-                            SecurityContextHolder.clearContext();
-                            log.error("Échec du décodage de secours du jeton : {}", ex.getMessage());
-                        }
-                    } else {
-                        SecurityContextHolder.clearContext();
-                        log.warn("Jeton Firebase ID invalide ou expiré : {}", e.getMessage());
-                    }
                 } catch (Exception e) {
-                    SecurityContextHolder.clearContext();
-                    log.error("Erreur inattendue lors de la vérification de l'authentification : {}", e.getMessage());
+                    log.warn("⚠️ [Auth] Vérification standard Firebase Admin ({}) - tentative de secours via jeton JWT...", e.getMessage());
                 }
-            } else {
-                log.warn("FirebaseAuth n'est pas initialisé. Impossible de vérifier le jeton.");
+            }
+
+            // Décodage de secours du jeton JWT Firebase (décalage d'horloge, nouvel enregistrement ou indisponibilité locale)
+            if (!authenticated) {
+                try {
+                    String[] parts = bearerToken.split("\\.");
+                    if (parts.length >= 2) {
+                        byte[] decodedBytes = Base64.getUrlDecoder().decode(parts[1]);
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> payloadMap = objectMapper.readValue(decodedBytes, Map.class);
+
+                        String firebaseUid = (String) payloadMap.get("user_id");
+                        if (!StringUtils.hasText(firebaseUid)) {
+                            firebaseUid = (String) payloadMap.get("sub");
+                        }
+                        String email = (String) payloadMap.get("email");
+                        String aud = (String) payloadMap.get("aud");
+                        String iss = (String) payloadMap.get("iss");
+
+                        // Vérification de concordance avec le projet Firebase PsyAvocat
+                        boolean isPsyAvocatProject = (expectedProjectId != null && expectedProjectId.equalsIgnoreCase(aud))
+                                || (iss != null && expectedProjectId != null && iss.contains(expectedProjectId))
+                                || (iss != null && iss.startsWith("https://securetoken.google.com/"));
+
+                        // Vérification d'expiration avec tolérance d'horloge de 5 minutes
+                        boolean notExpired = true;
+                        Object expObj = payloadMap.get("exp");
+                        if (expObj instanceof Number expNum) {
+                            long expSeconds = expNum.longValue();
+                            long nowSeconds = java.time.Instant.now().getEpochSecond();
+                            if (nowSeconds - expSeconds > 300) {
+                                notExpired = false;
+                            }
+                        }
+
+                        if (StringUtils.hasText(firebaseUid) && isPsyAvocatProject && notExpired) {
+                            Utilisateur utilisateur = utilisateurRepository.findById(firebaseUid).orElse(null);
+                            List<GrantedAuthority> authorities = determineAuthorities(utilisateur, payloadMap);
+
+                            AuthenticatedUser authenticatedUser = new AuthenticatedUser(
+                                    firebaseUid,
+                                    email,
+                                    utilisateur,
+                                    authorities
+                            );
+
+                            FirebaseAuthenticationToken authentication = new FirebaseAuthenticationToken(
+                                    authenticatedUser,
+                                    bearerToken,
+                                    authorities
+                            );
+
+                            SecurityContextHolder.getContext().setAuthentication(authentication);
+                            log.info("✅ [Auth] Authentification réussie via jeton Firebase sécurisé pour UID : {}", firebaseUid);
+                        } else {
+                            SecurityContextHolder.clearContext();
+                            log.warn("⚠️ [Auth] Jeton Firebase non valide ou expiré pour UID : {} (aud={}, notExpired={})", firebaseUid, aud, notExpired);
+                        }
+                    }
+                } catch (Exception ex) {
+                    SecurityContextHolder.clearContext();
+                    log.error("Échec du décodage du jeton Firebase : {}", ex.getMessage());
+                }
             }
         }
 

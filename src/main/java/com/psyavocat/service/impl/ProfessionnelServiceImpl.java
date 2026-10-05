@@ -23,13 +23,16 @@ public class ProfessionnelServiceImpl implements ProfessionnelService {
 
     private final ProfessionnelRepository professionnelRepository;
     private final ProfessionnelMapper professionnelMapper;
+    private final com.psyavocat.service.NotificationService notificationService;
 
     public ProfessionnelServiceImpl(
             ProfessionnelRepository professionnelRepository,
-            ProfessionnelMapper professionnelMapper
+            ProfessionnelMapper professionnelMapper,
+            com.psyavocat.service.NotificationService notificationService
     ) {
         this.professionnelRepository = professionnelRepository;
         this.professionnelMapper = professionnelMapper;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -74,6 +77,11 @@ public class ProfessionnelServiceImpl implements ProfessionnelService {
 
     @Override
     public ProfessionnelResponseDTO updateStatutValidation(String id, String nouveauStatut) {
+        return updateStatutValidation(id, nouveauStatut, null);
+    }
+
+    @Override
+    public ProfessionnelResponseDTO updateStatutValidation(String id, String nouveauStatut, String motif) {
         if (!STATUTS_VALIDES.contains(nouveauStatut)) {
             throw new BadRequestException("Statut invalide : " + nouveauStatut + ". Valeurs acceptées : " + STATUTS_VALIDES);
         }
@@ -81,8 +89,37 @@ public class ProfessionnelServiceImpl implements ProfessionnelService {
         Professionnel pro = professionnelRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Professionnel introuvable avec l'identifiant : " + id));
 
+        if ("REJECTED".equalsIgnoreCase(nouveauStatut)) {
+            if (motif == null || motif.trim().isEmpty()) {
+                throw new BadRequestException("Le motif est obligatoire pour refuser un dossier professionnel.");
+            }
+            pro.setMotifRefus(motif.trim());
+            notificationService.sendNotification(
+                    pro.getId(),
+                    "VALIDATION_REFUSEE",
+                    "Votre dossier d'inscription professionnelle a été refusé. Motif : " + motif.trim(),
+                    null
+            );
+        } else if ("APPROVED".equalsIgnoreCase(nouveauStatut)) {
+            pro.setMotifRefus(null);
+            notificationService.sendNotification(
+                    pro.getId(),
+                    "VALIDATION_APPROUVEE",
+                    "Félicitations ! Votre profil professionnel a été validé par l'administration. Vous avez désormais un accès complet à l'espace professionnel.",
+                    null
+            );
+        } else if ("SUSPENDED".equalsIgnoreCase(nouveauStatut)) {
+            notificationService.sendNotification(
+                    pro.getId(),
+                    "COMPTE_SUSPENDU",
+                    "Votre compte professionnel a été suspendu par l'administration." + (motif != null && !motif.isBlank() ? " Motif : " + motif.trim() : ""),
+                    null
+            );
+        }
+
         pro.setStatutValidation(nouveauStatut);
         Professionnel saved = professionnelRepository.save(pro);
         return professionnelMapper.toDto(saved);
     }
 }
+

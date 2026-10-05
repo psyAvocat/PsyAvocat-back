@@ -26,6 +26,9 @@ public class Notification {
 
     private String lienVisio;
 
+    @Column(nullable = false)
+    private boolean lu = false;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "destinataire_id")
     private Utilisateur destinataire;

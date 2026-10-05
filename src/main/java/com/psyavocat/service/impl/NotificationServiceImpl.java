@@ -57,6 +57,29 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
+    public void markAsRead(String id) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Notification notif = notificationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Notification introuvable"));
+
+        if (!notif.getDestinataire().getId().equals(uid)) {
+            throw new ForbiddenException("Vous ne pouvez pas modifier cette notification");
+        }
+        notif.setLu(true);
+        notificationRepository.save(notif);
+    }
+
+    @Override
+    public void markAllAsRead() {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        List<Notification> list = notificationRepository.findByDestinataireIdOrderByDateEnvoiDesc(uid);
+        for (Notification n : list) {
+            n.setLu(true);
+        }
+        notificationRepository.saveAll(list);
+    }
+
+    @Override
     public void deleteNotification(String id) {
         String uid = authenticationContext.getRequiredFirebaseUid();
         Notification notif = notificationRepository.findById(id)
@@ -76,6 +99,7 @@ public class NotificationServiceImpl implements NotificationService {
                 .contenu(n.getContenu())
                 .dateEnvoi(n.getDateEnvoi())
                 .lienVisio(n.getLienVisio())
+                .lu(n.isLu())
                 .build();
     }
 }

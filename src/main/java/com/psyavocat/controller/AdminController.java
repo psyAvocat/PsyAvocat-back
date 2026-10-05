@@ -57,13 +57,26 @@ public class AdminController {
         return ResponseEntity.ok(professionnelService.getProfessionnelsEnAttente());
     }
 
+    @GetMapping("/professionnels/{id}")
+    public ResponseEntity<ProfessionnelResponseDTO> getProfessionnelById(@PathVariable String id) {
+        return ResponseEntity.ok(professionnelService.getProfessionnelById(id));
+    }
+
     @PatchMapping("/professionnels/{id}/statut")
     public ResponseEntity<ProfessionnelResponseDTO> updateStatutValidation(
             @PathVariable String id,
             @Valid @RequestBody StatutValidationRequest request
     ) {
-        return ResponseEntity.ok(professionnelService.updateStatutValidation(id, request.getStatut()));
+        return ResponseEntity.ok(professionnelService.updateStatutValidation(id, request.getStatut(), request.getMotif()));
     }
+
+    @PatchMapping("/utilisateurs/{id}/statut")
+    public ResponseEntity<com.psyavocat.dto.admin.UtilisateurResponseDTO> toggleStatutUtilisateur(
+            @PathVariable String id,
+            @RequestParam(name = "actif") boolean actif) {
+        return ResponseEntity.ok(adminService.toggleStatutUtilisateur(id, actif));
+    }
+
 
     @GetMapping("/signalements")
     public ResponseEntity<List<com.psyavocat.dto.admin.SignalementResponseDTO>> getSignalementsActifs() {
