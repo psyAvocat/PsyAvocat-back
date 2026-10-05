@@ -28,8 +28,14 @@ public class R2Config {
     @Value("${r2.secret-access-key:${R2_SECRET_ACCESS_KEY:}}")
     private String secretAccessKey;
 
-    @Value("${r2.bucket-name:${R2_BUCKET_NAME:}}")
-    private String bucketName;
+    @Value("${r2.media-bucket:${R2_MEDIA_BUCKET:psyavocat-media}}")
+    private String mediaBucket;
+
+    @Value("${r2.documents-bucket:${R2_DOCUMENTS_BUCKET:psyavocat-documents}}")
+    private String documentsBucket;
+
+    @Value("${r2.presigned-expiration:${R2_PRESIGNED_EXPIRATION:15}}")
+    private int presignedExpiration;
 
     @Value("${r2.endpoint:${R2_ENDPOINT:}}")
     private String customEndpoint;
@@ -47,19 +53,30 @@ public class R2Config {
     public boolean isConfigured() {
         return accessKeyId != null && !accessKeyId.isBlank() &&
                secretAccessKey != null && !secretAccessKey.isBlank() &&
-               bucketName != null && !bucketName.isBlank() &&
                resolveEndpoint() != null;
+    }
+
+    public String getMediaBucket() {
+        return mediaBucket;
+    }
+
+    public String getDocumentsBucket() {
+        return documentsBucket;
+    }
+
+    public int getPresignedExpiration() {
+        return presignedExpiration;
     }
 
     @Bean
     public S3Client r2S3Client() {
         if (!isConfigured()) {
-            log.warn("Cloudflare R2 n'est pas configuré (variables R2_* absentes). Le stockage des justificatifs restera en mode dégradé ou local.");
+            log.warn("Cloudflare R2 n'est pas configuré (variables R2_* absentes). Le stockage restera en mode dégradé.");
             return null;
         }
 
         String endpoint = resolveEndpoint();
-        log.info("Initialisation du client S3 pour Cloudflare R2 sur l'endpoint : {} (bucket : {})", endpoint, bucketName);
+        log.info("Initialisation du client S3 pour Cloudflare R2 sur l'endpoint : {} (media: {}, documents: {})", endpoint, mediaBucket, documentsBucket);
 
         AwsBasicCredentials credentials = AwsBasicCredentials.create(accessKeyId.trim(), secretAccessKey.trim());
 

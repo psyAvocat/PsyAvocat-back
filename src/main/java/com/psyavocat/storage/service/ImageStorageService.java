@@ -4,8 +4,8 @@ import com.psyavocat.storage.model.StoredImage;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Abstraction de stockage des images publiques (photos de profil, avatars).
- * Aucune dépendance directe au SDK Cloudinary dans les contrôleurs.
+ * Abstraction de stockage des images et médias (photos de profil, avatars).
+ * Aucune dépendance directe au SDK de stockage dans les contrôleurs.
  */
 public interface ImageStorageService {
 

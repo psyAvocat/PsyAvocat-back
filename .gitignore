@@ -42,3 +42,8 @@ out/
 *.pem
 *.key
 credentials/
+
+### Environment files ###
+.env
+.env.*
+!.env.example

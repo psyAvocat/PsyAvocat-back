@@ -194,14 +194,14 @@ public class ProfilServiceImpl implements ProfilService {
             throw new com.psyavocat.exception.BadRequestException("Seul un professionnel peut enregistrer une photo de profil.");
         }
 
-        // Supprime l'ancienne photo de Cloudinary si un identifiant existait
-        if (pro.getPhotoPublicId() != null && !pro.getPhotoPublicId().isBlank()) {
-            imageStorageService.deleteImage(pro.getPhotoPublicId());
+        // Supprime l'ancienne photo du stockage R2 si un identifiant existait
+        if (pro.getPhotoObjectKey() != null && !pro.getPhotoObjectKey().isBlank()) {
+            imageStorageService.deleteImage(pro.getPhotoObjectKey());
         }
 
         com.psyavocat.storage.model.StoredImage stored = imageStorageService.uploadImage(file, "avatars", pro.getId());
         pro.setPhotoUrl(stored.getUrl());
-        pro.setPhotoPublicId(stored.getPublicId());
+        pro.setPhotoObjectKey(stored.getObjectKey() != null ? stored.getObjectKey() : stored.getPublicId());
 
         Professionnel saved = utilisateurRepository.save(pro);
         return userMapper.toProfileResponse(saved);
@@ -217,12 +217,12 @@ public class ProfilServiceImpl implements ProfilService {
             throw new com.psyavocat.exception.BadRequestException("Seul un professionnel peut gérer sa photo de profil.");
         }
 
-        if (pro.getPhotoPublicId() != null && !pro.getPhotoPublicId().isBlank()) {
-            imageStorageService.deleteImage(pro.getPhotoPublicId());
+        if (pro.getPhotoObjectKey() != null && !pro.getPhotoObjectKey().isBlank()) {
+            imageStorageService.deleteImage(pro.getPhotoObjectKey());
         }
 
         pro.setPhotoUrl(null);
-        pro.setPhotoPublicId(null);
+        pro.setPhotoObjectKey(null);
 
         Professionnel saved = utilisateurRepository.save(pro);
         return userMapper.toProfileResponse(saved);

@@ -28,7 +28,16 @@ public abstract class Professionnel extends Utilisateur {
 
     private String photoUrl;
 
-    private String photoPublicId;
+    @Column(name = "photo_object_key")
+    private String photoObjectKey;
+
+    public String getPhotoPublicId() {
+        return photoObjectKey;
+    }
+
+    public void setPhotoPublicId(String photoPublicId) {
+        this.photoObjectKey = photoPublicId;
+    }
 
     private Double noteMoyenne;
 

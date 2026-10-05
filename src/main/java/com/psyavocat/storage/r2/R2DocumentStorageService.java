@@ -45,8 +45,11 @@ public class R2DocumentStorageService implements DocumentStorageService {
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
 
-    @Value("${r2.bucket-name:${R2_BUCKET_NAME:}}")
-    private String bucketName;
+    @Value("${r2.documents-bucket:${R2_DOCUMENTS_BUCKET:psyavocat-documents}}")
+    private String documentsBucket;
+
+    @Value("${r2.presigned-expiration:${R2_PRESIGNED_EXPIRATION:15}}")
+    private int presignedExpiration = 15;
 
     public R2DocumentStorageService(
             @Autowired(required = false) S3Client s3Client,
@@ -58,7 +61,7 @@ public class R2DocumentStorageService implements DocumentStorageService {
 
     @Override
     public boolean isAvailable() {
-        return s3Client != null && bucketName != null && !bucketName.isBlank();
+        return s3Client != null && documentsBucket != null && !documentsBucket.isBlank();
     }
 
     @Override
@@ -72,7 +75,7 @@ public class R2DocumentStorageService implements DocumentStorageService {
 
         try {
             PutObjectRequest putRequest = PutObjectRequest.builder()
-                    .bucket(bucketName)
+                    .bucket(documentsBucket)
                     .key(cleObjet)
                     .contentType(file.getContentType())
                     .contentLength(file.getSize())
@@ -85,7 +88,7 @@ public class R2DocumentStorageService implements DocumentStorageService {
             String presignedUrl = null;
             if (s3Presigner != null) {
                 try {
-                    presignedUrl = generatePresignedDownloadUrl(cleObjet, Duration.ofMinutes(15));
+                    presignedUrl = generatePresignedDownloadUrl(cleObjet, Duration.ofMinutes(presignedExpiration > 0 ? presignedExpiration : 15));
                 } catch (Exception e) {
                     log.warn("Impossible de pré-générer l'URL présignée pour {} : {}", cleObjet, e.getMessage());
                 }
@@ -116,7 +119,7 @@ public class R2DocumentStorageService implements DocumentStorageService {
 
         try {
             GetObjectRequest getRequest = GetObjectRequest.builder()
-                    .bucket(bucketName)
+                    .bucket(documentsBucket)
                     .key(cleObjet)
                     .build();
 
@@ -145,18 +148,19 @@ public class R2DocumentStorageService implements DocumentStorageService {
 
     @Override
     public String generatePresignedDownloadUrl(String cleObjet, Duration duree) {
-        if (s3Presigner == null || bucketName == null || bucketName.isBlank()) {
+        if (s3Presigner == null || documentsBucket == null || documentsBucket.isBlank()) {
             throw new ApiException("Le générateur d'URL présignées R2 n'est pas configuré.", HttpStatus.SERVICE_UNAVAILABLE) {};
         }
 
         try {
+            Duration expiration = duree != null ? duree : Duration.ofMinutes(presignedExpiration > 0 ? presignedExpiration : 15);
             GetObjectRequest getRequest = GetObjectRequest.builder()
-                    .bucket(bucketName)
+                    .bucket(documentsBucket)
                     .key(cleObjet)
                     .build();
 
             GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-                    .signatureDuration(duree != null ? duree : Duration.ofMinutes(15))
+                    .signatureDuration(expiration)
                     .getObjectRequest(getRequest)
                     .build();
 
@@ -176,7 +180,7 @@ public class R2DocumentStorageService implements DocumentStorageService {
 
         try {
             DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
-                    .bucket(bucketName)
+                    .bucket(documentsBucket)
                     .key(cleObjet)
                     .build();
 

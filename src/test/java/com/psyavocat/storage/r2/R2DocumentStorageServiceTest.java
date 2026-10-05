@@ -38,7 +38,8 @@ class R2DocumentStorageServiceTest {
     @BeforeEach
     void setUp() {
         r2Service = new R2DocumentStorageService(s3Client, s3Presigner);
-        ReflectionTestUtils.setField(r2Service, "bucketName", "psyavocat-justificatifs-prive");
+        ReflectionTestUtils.setField(r2Service, "documentsBucket", "psyavocat-documents");
+        ReflectionTestUtils.setField(r2Service, "presignedExpiration", 15);
     }
 
     @Test
