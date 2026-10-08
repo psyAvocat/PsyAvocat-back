@@ -13,6 +13,13 @@ public interface ProfessionnelRepository extends JpaRepository<Professionnel, St
 
     List<Professionnel> findByStatutValidation(String statutValidation);
 
+    @Query("SELECT p FROM Professionnel p WHERE UPPER(p.statutValidation) IN ('PENDING', 'EN_ATTENTE')")
+    List<Professionnel> findEnAttente();
+
+    /** Chaque ligne : [statutValidation (String, peut être null), total (Long)]. */
+    @Query("SELECT p.statutValidation, COUNT(p) FROM Professionnel p GROUP BY p.statutValidation")
+    List<Object[]> compterParStatutValidation();
+
     @Query("SELECT DISTINCT p FROM Professionnel p LEFT JOIN p.specialites s WHERE " +
            "(:statut IS NULL OR p.statutValidation = :statut) AND " +
            "(:ville IS NULL OR LOWER(p.ville) LIKE LOWER(CONCAT('%', :ville, '%'))) AND " +

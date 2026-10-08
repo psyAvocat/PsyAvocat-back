@@ -25,6 +25,11 @@ public class DisponibiliteController {
         return ResponseEntity.status(HttpStatus.CREATED).body(disponibiliteService.createDisponibilite(request));
     }
 
+    @PostMapping("/batch")
+    public ResponseEntity<List<DisponibiliteResponseDTO>> createDisponibilitesBatch(@Valid @RequestBody List<CreateDisponibiliteRequest> requests) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(disponibiliteService.createDisponibilitesBatch(requests));
+    }
+
     @GetMapping("/me")
     public ResponseEntity<List<DisponibiliteResponseDTO>> getMyDisponibilites() {
         return ResponseEntity.ok(disponibiliteService.getMyDisponibilites());
@@ -37,7 +42,13 @@ public class DisponibiliteController {
     }
 
     @GetMapping("/professionnel/{professionnelId}")
-    public ResponseEntity<List<DisponibiliteResponseDTO>> getDisponibilitesLibres(@PathVariable String professionnelId) {
-        return ResponseEntity.ok(disponibiliteService.getDisponibilitesLibres(professionnelId));
+    public ResponseEntity<List<DisponibiliteResponseDTO>> getDisponibilitesLibres(
+            @PathVariable String professionnelId,
+            @RequestParam(defaultValue = "false") boolean inclureReserves
+    ) {
+        // Par défaut (contrat historique) : uniquement les créneaux libres.
+        return ResponseEntity.ok(inclureReserves
+                ? disponibiliteService.getCreneauxAVenir(professionnelId)
+                : disponibiliteService.getDisponibilitesLibres(professionnelId));
     }
 }

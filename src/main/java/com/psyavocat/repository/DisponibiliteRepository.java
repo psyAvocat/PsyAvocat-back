@@ -18,5 +18,25 @@ public interface DisponibiliteRepository extends JpaRepository<Disponibilite, St
 
     boolean existsByProfessionnelIdAndDateAndHeureDebut(String professionnelId, LocalDate date, java.time.LocalTime heureDebut);
 
+    List<Disponibilite> findByProfessionnelIdAndDate(String professionnelId, LocalDate date);
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT d FROM Disponibilite d WHERE d.professionnel.id = :proId AND d.date = :date AND d.heureDebut < :heureFin AND d.heureFin > :heureDebut"
+    )
+    List<Disponibilite> findConflictingDisponibilites(
+            @org.springframework.data.repository.query.Param("proId") String professionnelId,
+            @org.springframework.data.repository.query.Param("date") LocalDate date,
+            @org.springframework.data.repository.query.Param("heureDebut") java.time.LocalTime heureDebut,
+            @org.springframework.data.repository.query.Param("heureFin") java.time.LocalTime heureFin
+    );
+
     long countByProfessionnelId(String professionnelId);
+
+    /**
+     * Lecture avec verrou exclusif : deux réservations simultanées du même créneau
+     * sont sérialisées, la seconde voit le statut RESERVE et échoue proprement.
+     */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("SELECT d FROM Disponibilite d WHERE d.id = :id")
+    java.util.Optional<Disponibilite> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") String id);
 }

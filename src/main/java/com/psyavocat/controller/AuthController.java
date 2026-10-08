@@ -46,6 +46,18 @@ public class AuthController {
         response.put("nom", user.getNom());
         response.put("prenom", user.getPrenom());
         response.put("roles", roles);
+        // Compte désactivé par l'administration (rétrocompatible : nouveau champ).
+        response.put("actif", user.getUtilisateur() == null
+                || !Boolean.FALSE.equals(user.getUtilisateur().getActif()));
+
+        if (user.getUtilisateur() instanceof com.psyavocat.entity.Professionnel pro) {
+            response.put("statutValidation", pro.getStatutValidation());
+            if (pro instanceof com.psyavocat.entity.Avocat) {
+                response.put("typeProfessionnel", "AVOCAT");
+            } else if (pro instanceof com.psyavocat.entity.Psychologue) {
+                response.put("typeProfessionnel", "PSYCHOLOGUE");
+            }
+        }
 
         return ResponseEntity.ok(response);
     }

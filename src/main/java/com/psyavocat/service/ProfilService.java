@@ -9,6 +9,9 @@ public interface ProfilService {
 
     UserProfileResponse getCurrentProfile();
 
+    /** Profil client unique (mobile), valable dans les univers Avocat et Psychologue. */
+    UserProfileResponse createClientProfile(CreateClientRequest request);
+
     UserProfileResponse createPatientProfile(CreatePatientRequest request);
 
     UserProfileResponse createJusticiableProfile(CreateJusticiableRequest request);
@@ -18,4 +21,8 @@ public interface ProfilService {
     UserProfileResponse createPsychologueProfile(CreatePsychologueRequest request);
 
     UserProfileResponse updateProfile(UpdateProfileRequest request);
+
+    UserProfileResponse uploadPhotoProfil(org.springframework.web.multipart.MultipartFile file);
+
+    UserProfileResponse supprimerPhotoProfil();
 }

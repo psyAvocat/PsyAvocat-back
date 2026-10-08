@@ -17,5 +17,7 @@ public class QuestionDTO {
     private String texte;
     private Integer ordre;
     private Boolean obligatoire;
+    private String contexte;
+    private String typeReponse;
     private List<ReponseDTO> reponses;
 }

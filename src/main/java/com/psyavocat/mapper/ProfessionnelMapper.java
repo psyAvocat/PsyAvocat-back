@@ -14,6 +14,12 @@ import java.util.List;
 @Component
 public class ProfessionnelMapper {
 
+    private final MediaUrlResolver mediaUrlResolver;
+
+    public ProfessionnelMapper(MediaUrlResolver mediaUrlResolver) {
+        this.mediaUrlResolver = mediaUrlResolver;
+    }
+
     public ProfessionnelResponseDTO toDto(Professionnel pro) {
         if (pro == null) {
             return null;
@@ -30,7 +36,9 @@ public class ProfessionnelMapper {
                 .adresse(pro.getAdresse())
                 .modeConsultation(pro.getModeConsultation())
                 .statutValidation(pro.getStatutValidation())
-                .photoUrl(pro.getPhotoUrl())
+                .motifRefus(pro.getMotifRefus())
+                .photoUrl(mediaUrlResolver.photoUrlOf(pro))
+
                 .noteMoyenne(pro.getNoteMoyenne())
                 .nombreAvis(pro.getNombreAvis())
                 .enLigne(pro.getEnLigne())

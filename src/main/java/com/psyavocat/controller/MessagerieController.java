@@ -43,4 +43,9 @@ public class MessagerieController {
     ) {
         return ResponseEntity.status(HttpStatus.CREATED).body(messagerieService.sendMessage(id, request));
     }
+
+    @GetMapping("/unread-count")
+    public ResponseEntity<java.util.Map<String, Long>> getUnreadMessagesCount() {
+        return ResponseEntity.ok(java.util.Map.of("unreadCount", messagerieService.getNombreMessagesNonLus()));
+    }
 }

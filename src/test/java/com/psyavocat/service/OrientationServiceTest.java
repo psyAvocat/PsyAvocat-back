@@ -18,6 +18,7 @@ import com.psyavocat.repository.PonderationOrientationRepository;
 import com.psyavocat.repository.QuestionRepository;
 import com.psyavocat.repository.QuestionnaireRepository;
 import com.psyavocat.repository.ReponseRepository;
+import com.psyavocat.repository.ResultatOrientationCategorieRepository;
 import com.psyavocat.repository.ResultatOrientationRepository;
 import com.psyavocat.repository.SpecialiteRepository;
 import com.psyavocat.repository.UtilisateurRepository;
@@ -57,6 +58,9 @@ class OrientationServiceTest {
     private ResultatOrientationRepository resultatOrientationRepository;
 
     @Mock
+    private ResultatOrientationCategorieRepository resultatOrientationCategorieRepository;
+
+    @Mock
     private UtilisateurRepository utilisateurRepository;
 
     @Mock
@@ -88,6 +92,7 @@ class OrientationServiceTest {
                 reponseRepository,
                 ponderationOrientationRepository,
                 resultatOrientationRepository,
+                resultatOrientationCategorieRepository,
                 utilisateurRepository,
                 categorieBesoinRepository,
                 specialiteRepository,
@@ -102,6 +107,11 @@ class OrientationServiceTest {
         questionnaire.setTitre("Questionnaire d’orientation psychologique");
         questionnaire.setType("PSYCHOLOGIQUE");
         questionnaire.setActif(true);
+
+        com.psyavocat.entity.Patient testUser = new com.psyavocat.entity.Patient();
+        testUser.setId("user-test");
+        lenient().when(authenticationContext.getFirebaseUid()).thenReturn(Optional.of("user-test"));
+        lenient().when(utilisateurRepository.findById("user-test")).thenReturn(Optional.of(testUser));
 
         question1 = new Question();
         question1.setId("q-1");
@@ -308,5 +318,58 @@ class OrientationServiceTest {
 
         assertThatThrownBy(() -> orientationService.evaluerQuestionnaire(req))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("Choix multiple : cumul des pondérations de plusieurs réponses sur une question CHOIX_MULTIPLE")
+    void testEvaluerQuestionnaire_ChoixMultiple_CumulPonderations() {
+        Question qMultiple = new Question();
+        qMultiple.setId("q-mult");
+        qMultiple.setCode("QM01");
+        qMultiple.setTexte("Quels symptômes ressentez-vous ?");
+        qMultiple.setTypeReponse("CHOIX_MULTIPLE");
+        qMultiple.setObligatoire(true);
+        qMultiple.setQuestionnaire(questionnaire);
+
+        when(questionnaireRepository.findById(questionnaire.getId())).thenReturn(Optional.of(questionnaire));
+        when(questionRepository.findByQuestionnaireIdOrderByOrdreAsc(questionnaire.getId()))
+                .thenReturn(List.of(qMultiple));
+
+        Reponse r1 = new Reponse();
+        r1.setId("r1");
+        r1.setQuestion(qMultiple);
+
+        Reponse r2 = new Reponse();
+        r2.setId("r2");
+        r2.setQuestion(qMultiple);
+
+        when(reponseRepository.findAllById(List.of("r1", "r2"))).thenReturn(List.of(r1, r2));
+
+        CategorieBesoin catStress = new CategorieBesoin();
+        catStress.setId("cat-stress");
+        catStress.setCode("STRESS");
+
+        PonderationOrientation p1 = new PonderationOrientation();
+        p1.setReponse(r1);
+        p1.setCategorieBesoin(catStress);
+        p1.setPoids(3);
+
+        PonderationOrientation p2 = new PonderationOrientation();
+        p2.setReponse(r2);
+        p2.setCategorieBesoin(catStress);
+        p2.setPoids(2);
+
+        when(ponderationOrientationRepository.findByReponseIdIn(List.of("r1", "r2")))
+                .thenReturn(List.of(p1, p2));
+
+        when(resultatOrientationRepository.save(any(ResultatOrientation.class))).thenAnswer(i -> i.getArgument(0));
+
+        SoumissionQuestionnaireRequest req = new SoumissionQuestionnaireRequest(questionnaire.getId(), List.of("r1", "r2"));
+        ResultatOrientationDTO result = orientationService.evaluerQuestionnaire(req);
+
+        assertThat(result).isNotNull();
+        // Score cumulé : 3 + 2 = 5
+        assertThat(result.getScore()).isEqualTo(5.0);
+        assertThat(result.getCategorieBesoinCode()).isEqualTo("STRESS");
     }
 }

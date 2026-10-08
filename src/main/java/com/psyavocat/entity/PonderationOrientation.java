@@ -4,7 +4,14 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "ponderations_orientation")
+@Table(name = "ponderations_orientation",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_ponderation_reponse_categorie",
+                        columnNames = {"reponse_id", "categorie_besoin_id"}),
+                @UniqueConstraint(name = "uk_ponderation_reponse_specialite",
+                        columnNames = {"reponse_id", "specialite_id"})
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

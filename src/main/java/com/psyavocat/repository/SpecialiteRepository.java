@@ -10,4 +10,6 @@ import java.util.Optional;
 public interface SpecialiteRepository extends JpaRepository<Specialite, String> {
     Optional<Specialite> findByNomIgnoreCase(String nom);
     boolean existsByNomIgnoreCase(String nom);
+    long countByDomaineId(String domaineId);
+
 }

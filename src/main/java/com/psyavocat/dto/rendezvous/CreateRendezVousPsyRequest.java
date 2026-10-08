@@ -27,4 +27,8 @@ public class CreateRendezVousPsyRequest {
     @NotNull(message = "Le montant total de la consultation est obligatoire")
     @DecimalMin(value = "0.01", message = "Le montant total doit être supérieur à zéro")
     private BigDecimal montantTotal;
+
+    /** Motif de consultation (facultatif). */
+    @jakarta.validation.constraints.Size(max = 500, message = "Le motif ne doit pas dépasser 500 caractères")
+    private String motif;
 }

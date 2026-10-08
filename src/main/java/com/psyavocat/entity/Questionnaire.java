@@ -31,6 +31,6 @@ public class Questionnaire {
     @OneToMany(mappedBy = "questionnaire", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Question> questions = new ArrayList<>();
 
-    @OneToMany(mappedBy = "questionnaire", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "questionnaire")
     private List<ResultatOrientation> resultats = new ArrayList<>();
 }

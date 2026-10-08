@@ -16,4 +16,6 @@ public interface MessagerieService {
     ConversationResponseDTO createConversation(CreateConversationRequest request);
 
     MessageResponseDTO sendMessage(String conversationId, SendMessageRequest request);
+
+    long getNombreMessagesNonLus();
 }

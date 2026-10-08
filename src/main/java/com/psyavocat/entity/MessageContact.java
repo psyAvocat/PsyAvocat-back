@@ -31,4 +31,7 @@ public class MessageContact {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "expediteur_id")
     private Utilisateur expediteur;
+
+    @Column(name = "lu")
+    private Boolean lu = false;
 }

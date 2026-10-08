@@ -3,6 +3,7 @@ package com.psyavocat.service.impl;
 import com.psyavocat.dto.orientation.QuestionDTO;
 import com.psyavocat.dto.orientation.QuestionnaireDTO;
 import com.psyavocat.dto.orientation.ReponseDTO;
+import com.psyavocat.dto.orientation.ResultatOrientationCategorieDTO;
 import com.psyavocat.dto.orientation.ResultatOrientationDTO;
 import com.psyavocat.dto.orientation.SoumissionQuestionnaireRequest;
 import com.psyavocat.dto.professionnel.ProfessionnelResponseDTO;
@@ -13,6 +14,7 @@ import com.psyavocat.entity.Question;
 import com.psyavocat.entity.Questionnaire;
 import com.psyavocat.entity.Reponse;
 import com.psyavocat.entity.ResultatOrientation;
+import com.psyavocat.entity.ResultatOrientationCategorie;
 import com.psyavocat.entity.Specialite;
 import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.exception.BadRequestException;
@@ -23,6 +25,7 @@ import com.psyavocat.repository.PonderationOrientationRepository;
 import com.psyavocat.repository.QuestionRepository;
 import com.psyavocat.repository.QuestionnaireRepository;
 import com.psyavocat.repository.ReponseRepository;
+import com.psyavocat.repository.ResultatOrientationCategorieRepository;
 import com.psyavocat.repository.ResultatOrientationRepository;
 import com.psyavocat.repository.SpecialiteRepository;
 import com.psyavocat.repository.UtilisateurRepository;
@@ -34,6 +37,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -61,6 +65,7 @@ public class OrientationServiceImpl implements OrientationService {
     private final ReponseRepository reponseRepository;
     private final PonderationOrientationRepository ponderationOrientationRepository;
     private final ResultatOrientationRepository resultatOrientationRepository;
+    private final ResultatOrientationCategorieRepository resultatCategorieRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final CategorieBesoinRepository categorieBesoinRepository;
     private final SpecialiteRepository specialiteRepository;
@@ -74,6 +79,7 @@ public class OrientationServiceImpl implements OrientationService {
             ReponseRepository reponseRepository,
             PonderationOrientationRepository ponderationOrientationRepository,
             ResultatOrientationRepository resultatOrientationRepository,
+            ResultatOrientationCategorieRepository resultatCategorieRepository,
             UtilisateurRepository utilisateurRepository,
             CategorieBesoinRepository categorieBesoinRepository,
             SpecialiteRepository specialiteRepository,
@@ -86,6 +92,7 @@ public class OrientationServiceImpl implements OrientationService {
         this.reponseRepository = reponseRepository;
         this.ponderationOrientationRepository = ponderationOrientationRepository;
         this.resultatOrientationRepository = resultatOrientationRepository;
+        this.resultatCategorieRepository = resultatCategorieRepository;
         this.utilisateurRepository = utilisateurRepository;
         this.categorieBesoinRepository = categorieBesoinRepository;
         this.specialiteRepository = specialiteRepository;
@@ -148,17 +155,24 @@ public class OrientationServiceImpl implements OrientationService {
             }
         }
 
-        // 6. Mode de sélection unique : une seule réponse par question
+        // 6. Validation du mode de sélection par question
         Map<String, List<Reponse>> reponsesParQuestion = reponses.stream()
                 .collect(Collectors.groupingBy(r -> r.getQuestion().getId()));
 
         for (Map.Entry<String, List<Reponse>> entry : reponsesParQuestion.entrySet()) {
             if (entry.getValue().size() > 1) {
-                throw new BadRequestException("Mode sélection unique : une seule réponse est autorisée par question (question : " + entry.getKey() + ")");
+                Reponse firstRep = entry.getValue().get(0);
+                Question questionAssociee = firstRep.getQuestion();
+                boolean allowsMultiple = questionAssociee != null &&
+                        "CHOIX_MULTIPLE".equalsIgnoreCase(questionAssociee.getTypeReponse());
+                if (!allowsMultiple) {
+                    throw new BadRequestException("Mode sélection unique : une seule réponse est autorisée par question (question : "
+                            + (questionAssociee != null ? questionAssociee.getTexte() : entry.getKey()) + ")");
+                }
             }
         }
 
-        // 6. Vérifier les questions obligatoires
+        // 6bis. Vérifier les questions obligatoires
         List<Question> questionsDuQuestionnaire = questionRepository.findByQuestionnaireIdOrderByOrdreAsc(questionnaire.getId());
         for (Question q : questionsDuQuestionnaire) {
             if (Boolean.TRUE.equals(q.getObligatoire()) && !reponsesParQuestion.containsKey(q.getId())) {
@@ -225,7 +239,7 @@ public class OrientationServiceImpl implements OrientationService {
                 }
             }
 
-        } else {
+        } else if ("JURIDIQUE".equalsIgnoreCase(questionnaire.getType())) {
             // Cas JURIDIQUE : Regroupement par Spécialité
             Map<Specialite, Integer> scoresParSpec = new HashMap<>();
             for (PonderationOrientation p : ponderations) {
@@ -267,6 +281,8 @@ public class OrientationServiceImpl implements OrientationService {
                             .orElse(candidatesTied.get(0));
                 }
             }
+        } else {
+            throw new BadRequestException("Type de questionnaire non supporté : " + questionnaire.getType());
         }
 
         // 13. Matching des professionnels (délégué au MatchingProfessionnelService)
@@ -289,8 +305,57 @@ public class OrientationServiceImpl implements OrientationService {
         resultat.setProfessionnelsRecommandes(prosRecommandes);
         resultat.setUtilisateur(user);
 
-        // 12. Enregistrer le résultat
-        resultat = resultatOrientationRepository.save(resultat);
+        // 12. Enregistrer le résultat si l'utilisateur est authentifié
+        if (user != null) {
+            resultat = resultatOrientationRepository.save(resultat);
+
+            // 12bis. Persister le classement complet multi-catégories (uniquement pour les questionnaires PSY)
+            if ("PSYCHOLOGIQUE".equalsIgnoreCase(questionnaire.getType())) {
+                Map<CategorieBesoin, Integer> scoresParCat = new HashMap<>();
+                for (PonderationOrientation p : ponderations) {
+                    if (p.getCategorieBesoin() != null) {
+                        scoresParCat.merge(p.getCategorieBesoin(), p.getPoids(), Integer::sum);
+                    }
+                }
+                List<Map.Entry<CategorieBesoin, Integer>> classement = scoresParCat.entrySet().stream()
+                        .sorted(Map.Entry.<CategorieBesoin, Integer>comparingByValue().reversed())
+                        .toList();
+
+                final ResultatOrientation savedResultat = resultat;
+                for (int i = 0; i < classement.size(); i++) {
+                    ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
+                    roc.setResultatOrientation(savedResultat);
+                    roc.setCategorieBesoin(classement.get(i).getKey());
+                    roc.setScore(classement.get(i).getValue());
+                    roc.setRang(i + 1);
+                    resultatCategorieRepository.save(roc);
+                }
+                resultat = resultatOrientationRepository.findById(resultat.getId()).orElse(resultat);
+            }
+        } else {
+            // Mode anonyme (sans compte connecté) : on calcule et renseigne les scores en mémoire pour le DTO
+            if ("PSYCHOLOGIQUE".equalsIgnoreCase(questionnaire.getType())) {
+                Map<CategorieBesoin, Integer> scoresParCat = new HashMap<>();
+                for (PonderationOrientation p : ponderations) {
+                    if (p.getCategorieBesoin() != null) {
+                        scoresParCat.merge(p.getCategorieBesoin(), p.getPoids(), Integer::sum);
+                    }
+                }
+                List<Map.Entry<CategorieBesoin, Integer>> classement = scoresParCat.entrySet().stream()
+                        .sorted(Map.Entry.<CategorieBesoin, Integer>comparingByValue().reversed())
+                        .toList();
+
+                List<ResultatOrientationCategorie> scoresMem = new ArrayList<>();
+                for (int i = 0; i < classement.size(); i++) {
+                    ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
+                    roc.setCategorieBesoin(classement.get(i).getKey());
+                    roc.setScore(classement.get(i).getValue());
+                    roc.setRang(i + 1);
+                    scoresMem.add(roc);
+                }
+                resultat.setScoresParCategorie(scoresMem);
+            }
+        }
 
         // 14. Retourner le Response DTO
         return toResultatDto(resultat, statutDepartage);
@@ -327,8 +392,7 @@ public class OrientationServiceImpl implements OrientationService {
         } catch (Exception e) {
             log.debug("Aucun contexte d'authentification disponible : {}", e.getMessage());
         }
-        // Fallback de démonstration si non authentifié
-        return utilisateurRepository.findAll().stream().findFirst().orElse(null);
+        return null;
     }
 
     private QuestionnaireDTO toQuestionnaireDto(Questionnaire q) {
@@ -355,6 +419,7 @@ public class OrientationServiceImpl implements OrientationService {
                         .libelle(r.getLibelle())
                         .valeur(r.getValeur())
                         .poids(r.getPoids())
+                        .questionId(quest.getId())
                         .build())
                 .toList() : Collections.emptyList();
 
@@ -364,6 +429,8 @@ public class OrientationServiceImpl implements OrientationService {
                 .texte(quest.getTexte())
                 .ordre(quest.getOrdre())
                 .obligatoire(quest.getObligatoire())
+                .contexte(quest.getContexte())
+                .typeReponse(quest.getTypeReponse())
                 .reponses(reponsesDto)
                 .build();
     }
@@ -372,6 +439,20 @@ public class OrientationServiceImpl implements OrientationService {
         List<ProfessionnelResponseDTO> prosDto = r.getProfessionnelsRecommandes() != null ?
                 r.getProfessionnelsRecommandes().stream()
                         .map(professionnelMapper::toDto)
+                        .toList() : Collections.emptyList();
+
+        // Mapper le classement complet multi-catégories
+        List<ResultatOrientationCategorieDTO> scoresDto = r.getScoresParCategorie() != null ?
+                r.getScoresParCategorie().stream()
+                        .sorted(Comparator.comparingInt(ResultatOrientationCategorie::getRang))
+                        .map(roc -> ResultatOrientationCategorieDTO.builder()
+                                .id(roc.getId())
+                                .categorieBesoinId(roc.getCategorieBesoin() != null ? roc.getCategorieBesoin().getId() : null)
+                                .categorieBesoinNom(roc.getCategorieBesoin() != null ? roc.getCategorieBesoin().getNom() : null)
+                                .categorieBesoinDescription(roc.getCategorieBesoin() != null ? roc.getCategorieBesoin().getDescription() : null)
+                                .score(roc.getScore())
+                                .rang(roc.getRang())
+                                .build())
                         .toList() : Collections.emptyList();
 
         return ResultatOrientationDTO.builder()
@@ -390,6 +471,7 @@ public class OrientationServiceImpl implements OrientationService {
                 .specialiteDescription(r.getSpecialite() != null ? r.getSpecialite().getDescription() : null)
                 .domaineNom(r.getSpecialite() != null && r.getSpecialite().getDomaine() != null ?
                         r.getSpecialite().getDomaine().getNom() : null)
+                .scoresParCategorie(scoresDto)
                 .professionnelsRecommandes(prosDto)
                 .build();
     }

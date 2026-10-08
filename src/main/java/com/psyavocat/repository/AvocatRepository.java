@@ -10,4 +10,6 @@ import java.util.List;
 public interface AvocatRepository extends JpaRepository<Avocat, String> {
 
     List<Avocat> findByStatutValidation(String statutValidation);
+
+    boolean existsByNumeroBarreauIgnoreCaseAndIdNot(String numeroBarreau, String id);
 }

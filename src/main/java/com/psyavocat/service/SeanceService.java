@@ -13,6 +13,10 @@ public interface SeanceService {
 
     FichePatientResponseDTO getFichePatient(String patientId);
 
+    List<SeanceResponseDTO> getMesSeances();
+
+    SeanceResponseDTO getSeanceById(String id);
+
     SeanceResponseDTO createSeance(CreateSeanceRequest request);
 
     NoteSeanceDTO ajouterNoteSeance(String seanceId, CreateNoteRequest request);

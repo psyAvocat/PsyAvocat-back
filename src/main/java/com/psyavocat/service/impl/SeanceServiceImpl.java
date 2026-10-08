@@ -3,7 +3,7 @@ package com.psyavocat.service.impl;
 import com.psyavocat.dto.seance.*;
 import com.psyavocat.entity.FichePatient;
 import com.psyavocat.entity.NoteSeance;
-import com.psyavocat.entity.Patient;
+import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.entity.Psychologue;
 import com.psyavocat.entity.Seance;
 import com.psyavocat.exception.ForbiddenException;
@@ -11,6 +11,7 @@ import com.psyavocat.exception.ResourceNotFoundException;
 import com.psyavocat.repository.*;
 import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.SeanceService;
+import com.psyavocat.service.support.ClientAccounts;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,7 +29,8 @@ public class SeanceServiceImpl implements SeanceService {
     private final SeanceRepository seanceRepository;
     private final NoteSeanceRepository noteSeanceRepository;
     private final PsychologueRepository psychologueRepository;
-    private final PatientRepository patientRepository;
+    private final UtilisateurRepository utilisateurRepository;
+    private final RendezVousRepository rendezVousRepository;
     private final AuthenticationContext authenticationContext;
 
     public SeanceServiceImpl(
@@ -36,14 +38,16 @@ public class SeanceServiceImpl implements SeanceService {
             SeanceRepository seanceRepository,
             NoteSeanceRepository noteSeanceRepository,
             PsychologueRepository psychologueRepository,
-            PatientRepository patientRepository,
+            UtilisateurRepository utilisateurRepository,
+            RendezVousRepository rendezVousRepository,
             AuthenticationContext authenticationContext
     ) {
         this.fichePatientRepository = fichePatientRepository;
         this.seanceRepository = seanceRepository;
         this.noteSeanceRepository = noteSeanceRepository;
         this.psychologueRepository = psychologueRepository;
-        this.patientRepository = patientRepository;
+        this.utilisateurRepository = utilisateurRepository;
+        this.rendezVousRepository = rendezVousRepository;
         this.authenticationContext = authenticationContext;
     }
 
@@ -66,12 +70,34 @@ public class SeanceServiceImpl implements SeanceService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<SeanceResponseDTO> getMesSeances() {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        return seanceRepository.findByPsychologueIdOrderByDateDesc(uid).stream()
+                .map(this::toSeanceDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SeanceResponseDTO getSeanceById(String id) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Seance seance = seanceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Séance introuvable"));
+        if (!seance.getPsychologue().getId().equals(uid)) {
+            throw new ForbiddenException("Accès non autorisé aux notes de cette séance");
+        }
+        return toSeanceDto(seance);
+    }
+
+    @Override
     public SeanceResponseDTO createSeance(CreateSeanceRequest request) {
         String uid = authenticationContext.getRequiredFirebaseUid();
         Psychologue psychologue = psychologueRepository.findById(uid)
                 .orElseThrow(() -> new ForbiddenException("Seul un psychologue peut créer une séance de consultation"));
 
-        Patient patient = patientRepository.findById(request.getPatientId())
+        Utilisateur patient = utilisateurRepository.findById(request.getPatientId())
+                .filter(ClientAccounts::isClient)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient introuvable"));
 
         // Récupérer ou initialiser la fiche patient
@@ -86,10 +112,19 @@ public class SeanceServiceImpl implements SeanceService {
 
         Seance seance = new Seance();
         seance.setDate(request.getDate());
-        seance.setStatut("PLANIFIEE");
+        seance.setStatut(request.getStatut() != null && !request.getStatut().isBlank() ? request.getStatut() : "REALISEE");
         seance.setPsychologue(psychologue);
         seance.setFichePatient(fiche);
+        seance.setRendezVousId(request.getRendezVousId());
         seance.setNotes(new ArrayList<>());
+
+        // Si la séance découle d'un rendez-vous, on met à jour son statut à "PASSE"
+        if (request.getRendezVousId() != null && !request.getRendezVousId().isBlank()) {
+            rendezVousRepository.findById(request.getRendezVousId()).ifPresent(rdv -> {
+                rdv.setStatut("PASSE");
+                rendezVousRepository.save(rdv);
+            });
+        }
 
         if (request.getNoteInitiale() != null && !request.getNoteInitiale().isBlank()) {
             NoteSeance note = new NoteSeance();
@@ -150,13 +185,24 @@ public class SeanceServiceImpl implements SeanceService {
                     .toList()
                 : Collections.emptyList();
 
-        return SeanceResponseDTO.builder()
+        SeanceResponseDTO.SeanceResponseDTOBuilder builder = SeanceResponseDTO.builder()
                 .id(s.getId())
                 .date(s.getDate())
                 .statut(s.getStatut())
                 .psychologueId(s.getPsychologue() != null ? s.getPsychologue().getId() : null)
                 .fichePatientId(s.getFichePatient() != null ? s.getFichePatient().getId() : null)
-                .notes(noteDtos)
-                .build();
+                .rendezVousId(s.getRendezVousId())
+                .notes(noteDtos);
+
+        if (s.getFichePatient() != null && s.getFichePatient().getPatient() != null) {
+            Utilisateur p = s.getFichePatient().getPatient();
+            builder.patientId(p.getId())
+                   .patientNom(p.getNom())
+                   .patientPrenom(p.getPrenom())
+                   .patientEmail(p.getEmail())
+                   .patientTelephone(p.getTelephone());
+        }
+
+        return builder.build();
     }
 }

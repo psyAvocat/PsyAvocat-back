@@ -1,14 +1,15 @@
 package com.psyavocat.dto.orientation;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.psyavocat.dto.professionnel.ProfessionnelResponseDTO;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
-import java.util.List;
 
 @Data
 @Builder
@@ -31,5 +32,6 @@ public class ResultatOrientationDTO {
     private String specialiteNom;
     private String specialiteDescription;
     private String domaineNom;
+    private List<ResultatOrientationCategorieDTO> scoresParCategorie;
     private List<ProfessionnelResponseDTO> professionnelsRecommandes;
 }

@@ -3,8 +3,6 @@ package com.psyavocat.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.util.ArrayList;
-import java.util.List;
 
 @Entity
 @Table(name = "justiciables")
@@ -13,6 +11,7 @@ import java.util.List;
 @NoArgsConstructor
 public class Justiciable extends Utilisateur {
 
-    @OneToMany(mappedBy = "justiciable", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Dossier> dossiers = new ArrayList<>();
+    /** Photo de profil (R2) — voir {@link PhotoProfil}. */
+    @Embedded
+    private PhotoProfil photo = new PhotoProfil();
 }

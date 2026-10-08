@@ -3,6 +3,7 @@ package com.psyavocat.service;
 import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatDirectRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousPsyRequest;
+import com.psyavocat.dto.rendezvous.ModifierCreneauRequest;
 import com.psyavocat.dto.rendezvous.RendezVousResponseDTO;
 
 import java.util.List;
@@ -43,4 +44,13 @@ public interface RendezVousService {
      * Annule un rendez-vous existant. L'appelant doit être le patient ou le praticien concerné.
      */
     RendezVousResponseDTO annulerRendezVous(String id);
+
+    /** Détail d'un rendez-vous dont l'appelant est le client ou le praticien. */
+    RendezVousResponseDTO getRendezVous(String id);
+
+    /**
+     * Déplace un rendez-vous (par son client) sur un autre créneau libre du même professionnel.
+     * La disponibilité du nouveau créneau est revérifiée sous verrou.
+     */
+    RendezVousResponseDTO modifierCreneau(String id, ModifierCreneauRequest request);
 }

@@ -10,4 +10,7 @@ import java.util.List;
 public interface MessageContactRepository extends JpaRepository<MessageContact, String> {
 
     List<MessageContact> findByConversationIdOrderByDateEnvoiAsc(String conversationId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(m) FROM MessageContact m JOIN m.conversation c JOIN c.participants p WHERE p.id = :userId AND m.expediteur.id != :userId AND (m.lu = false OR m.lu IS NULL)")
+    long countUnreadMessagesForUser(@org.springframework.data.repository.query.Param("userId") String userId);
 }

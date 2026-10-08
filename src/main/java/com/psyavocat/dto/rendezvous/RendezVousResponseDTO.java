@@ -33,4 +33,15 @@ public class RendezVousResponseDTO {
     private BigDecimal montantTotal;
     private BigDecimal montantAcompte; // 20%
     private String statutPaiement;
+
+    // --- Champs ajoutés (rétrocompatibles) pour l'affichage détaillé côté clients ---
+    private LocalDateTime dateFin;
+    private Integer dureeMinutes;
+    private String motif;
+    private String devise;
+    private String lienVisio;
+    private String adresseCabinet;
+    private String disponibiliteId;
+    private String professionnelPhotoUrl;
+    private String professionnelSpecialite;
 }

@@ -10,4 +10,6 @@ import java.util.List;
 public interface PsychologueRepository extends JpaRepository<Psychologue, String> {
 
     List<Psychologue> findByStatutValidation(String statutValidation);
+
+    boolean existsByNumeroAgrementIgnoreCaseAndIdNot(String numeroAgrement, String id);
 }

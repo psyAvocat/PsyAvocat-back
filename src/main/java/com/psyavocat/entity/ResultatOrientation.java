@@ -47,6 +47,13 @@ public class ResultatOrientation {
     )
     private List<Professionnel> professionnelsRecommandes = new ArrayList<>();
 
+    /**
+     * Classement complet de toutes les catégories avec leur score et rang.
+     * Permet d'afficher un résultat multi-critères (Anxiété rang1, Stress rang2, etc.).
+     */
+    @OneToMany(mappedBy = "resultatOrientation", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ResultatOrientationCategorie> scoresParCategorie = new ArrayList<>();
+
     public Utilisateur getPatient() {
         return utilisateur;
     }

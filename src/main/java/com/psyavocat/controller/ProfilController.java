@@ -17,9 +17,15 @@ public class ProfilController {
         this.profilService = profilService;
     }
 
-    @GetMapping
+    @GetMapping({"", "/me"})
     public ResponseEntity<UserProfileResponse> getCurrentProfile() {
         return ResponseEntity.ok(profilService.getCurrentProfile());
+    }
+
+    /** Profil client unique créé à l'inscription mobile (univers Avocat + Psychologue). */
+    @PostMapping("/client")
+    public ResponseEntity<UserProfileResponse> createClientProfile(@Valid @RequestBody CreateClientRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(profilService.createClientProfile(request));
     }
 
     @PostMapping("/patient")
@@ -46,8 +52,18 @@ public class ProfilController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @PutMapping
+    @PutMapping({"", "/me"})
     public ResponseEntity<UserProfileResponse> updateProfile(@RequestBody UpdateProfileRequest request) {
         return ResponseEntity.ok(profilService.updateProfile(request));
+    }
+
+    @PostMapping(value = "/photo", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<UserProfileResponse> uploadPhotoProfil(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        return ResponseEntity.ok(profilService.uploadPhotoProfil(file));
+    }
+
+    @DeleteMapping("/photo")
+    public ResponseEntity<UserProfileResponse> supprimerPhotoProfil() {
+        return ResponseEntity.ok(profilService.supprimerPhotoProfil());
     }
 }

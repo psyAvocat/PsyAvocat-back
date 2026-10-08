@@ -89,6 +89,39 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
+    /** JSON mal formé ou valeur hors liste contrôlée (ex. motif de signalement inconnu). */
+    @ExceptionHandler({
+            org.springframework.http.converter.HttpMessageNotReadableException.class,
+            org.springframework.web.bind.MissingServletRequestParameterException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleRequeteIllisible(Exception ex, HttpServletRequest request) {
+        log.warn("Requête illisible sur {} : {}", request.getRequestURI(), ex.getMessage());
+        return reponse(HttpStatus.BAD_REQUEST, "Requête invalide : données manquantes, mal formées ou valeur non autorisée.", request);
+    }
+
+    /**
+     * Conflit d'accès concurrent (ex. deux réservations simultanées du même créneau)
+     * ou contrainte d'unicité violée en base.
+     */
+    @ExceptionHandler({
+            org.springframework.dao.PessimisticLockingFailureException.class,
+            org.springframework.dao.DataIntegrityViolationException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleConflitConcurrent(Exception ex, HttpServletRequest request) {
+        log.warn("Conflit de données sur {} : {}", request.getRequestURI(), ex.getMessage());
+        return reponse(HttpStatus.CONFLICT, "Cette opération est en conflit avec une modification simultanée. Veuillez réessayer.", request);
+    }
+
+    private ResponseEntity<ApiErrorResponse> reponse(HttpStatus status, String message, HttpServletRequest request) {
+        return ResponseEntity.status(status).body(ApiErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(status.value())
+                .error(status.getReasonPhrase())
+                .message(message)
+                .path(request.getRequestURI())
+                .build());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleGenericException(Exception ex, HttpServletRequest request) {
         log.error("Exception non interceptée sur {}", request.getRequestURI(), ex);

@@ -27,6 +27,12 @@ public class Question {
 
     private Boolean obligatoire;
 
+    @Column(name = "contexte")
+    private String contexte;
+
+    @Column(name = "type_reponse")
+    private String typeReponse = "CHOIX_UNIQUE";
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "questionnaire_id")
     private Questionnaire questionnaire;

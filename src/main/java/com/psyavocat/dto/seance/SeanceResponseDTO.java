@@ -21,5 +21,11 @@ public class SeanceResponseDTO {
     private String statut;
     private String psychologueId;
     private String fichePatientId;
+    private String patientId;
+    private String patientNom;
+    private String patientPrenom;
+    private String patientEmail;
+    private String patientTelephone;
+    private String rendezVousId;
     private List<NoteSeanceDTO> notes;
 }

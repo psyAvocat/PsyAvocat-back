@@ -28,7 +28,7 @@ public class Reponse {
     private Integer poids;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "question_id")
+    @JoinColumn(name = "question_id", nullable = false)
     private Question question;
 
     @OneToMany(mappedBy = "reponse", cascade = CascadeType.ALL, orphanRemoval = true)

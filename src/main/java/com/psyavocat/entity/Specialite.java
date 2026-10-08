@@ -24,6 +24,32 @@ public class Specialite {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "type_professionnel")
+    private String typeProfessionnel; // AVOCAT, PSYCHOLOGUE
+
+    public String resolveTypeProfessionnel() {
+        if (this.typeProfessionnel != null && !this.typeProfessionnel.isBlank()) {
+            return this.typeProfessionnel.trim().toUpperCase();
+        }
+        if (this.categoriesBesoin != null && !this.categoriesBesoin.isEmpty()) {
+            for (CategorieBesoin cat : this.categoriesBesoin) {
+                if (cat.getTypeProfessionnel() != null && !cat.getTypeProfessionnel().isBlank()) {
+                    return cat.getTypeProfessionnel().trim().toUpperCase();
+                }
+            }
+        }
+        if (this.domaine != null && this.domaine.getNom() != null) {
+            String d = this.domaine.getNom().toLowerCase();
+            if (d.contains("droit") || d.contains("juridique") || d.contains("avocat") || d.contains("travail") || d.contains("affaires") || d.contains("pénal")) {
+                return "AVOCAT";
+            }
+            if (d.contains("psy") || d.contains("santé") || d.contains("mental") || d.contains("thérapie") || d.contains("clinique")) {
+                return "PSYCHOLOGUE";
+            }
+        }
+        return null;
+    }
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "domaine_id")
     private Domaine domaine;

@@ -70,15 +70,18 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // Endpoint public de vérification de santé
                         .requestMatchers("/health").permitAll()
+                        // WebSocket : authentifié par RealtimeHandshakeInterceptor (jeton Firebase vérifié)
+                        .requestMatchers("/ws").permitAll()
                         // Consultation publique du catalogue et orientation onboarding
                         .requestMatchers(HttpMethod.GET, "/api/orientation/questionnaires/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/questionnaires/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/orientation/evaluer").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/professionnels/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/disponibilites/professionnel/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/referentiels/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/specialites/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/domaines/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/referentiels", "/api/referentiels/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/specialites", "/api/specialites/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/domaines", "/api/domaines/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/categories-besoin", "/api/categories-besoin/**").permitAll()
                         // Tout autre endpoint nécessite une authentification Firebase valide
                         .anyRequest().authenticated()
                 )

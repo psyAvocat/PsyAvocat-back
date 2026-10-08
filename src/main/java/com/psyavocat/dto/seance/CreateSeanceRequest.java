@@ -21,5 +21,7 @@ public class CreateSeanceRequest {
     @NotNull(message = "La date et l'heure de la séance sont obligatoires")
     private LocalDateTime date;
 
+    private String statut; // Optionnel : REALISEE par défaut
     private String noteInitiale;
+    private String rendezVousId;
 }
