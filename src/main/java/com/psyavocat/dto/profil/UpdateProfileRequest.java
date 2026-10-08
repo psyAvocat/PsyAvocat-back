@@ -16,6 +16,7 @@ public class UpdateProfileRequest {
     private String nom;
     private String prenom;
     private String telephone;
+    private String email;
 
     // Pour les professionnels
     private String biographie;

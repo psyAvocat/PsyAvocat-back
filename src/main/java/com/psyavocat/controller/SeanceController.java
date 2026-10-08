@@ -31,6 +31,16 @@ public class SeanceController {
         return ResponseEntity.ok(seanceService.getFichePatient(patientId));
     }
 
+    @GetMapping("/seances")
+    public ResponseEntity<List<SeanceResponseDTO>> getMesSeances() {
+        return ResponseEntity.ok(seanceService.getMesSeances());
+    }
+
+    @GetMapping("/seances/{id}")
+    public ResponseEntity<SeanceResponseDTO> getSeanceById(@PathVariable String id) {
+        return ResponseEntity.ok(seanceService.getSeanceById(id));
+    }
+
     @PostMapping("/seances")
     public ResponseEntity<SeanceResponseDTO> createSeance(@Valid @RequestBody CreateSeanceRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(seanceService.createSeance(request));

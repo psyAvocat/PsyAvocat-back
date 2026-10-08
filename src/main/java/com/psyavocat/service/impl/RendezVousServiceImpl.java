@@ -79,6 +79,11 @@ public class RendezVousServiceImpl implements RendezVousService {
             throw new BadRequestException("Le créneau n'appartient pas au psychologue sélectionné");
         }
 
+        LocalDateTime debutCreneau = LocalDateTime.of(disp.getDate(), disp.getHeureDebut());
+        if (debutCreneau.isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Ce créneau est expiré et ne peut plus être réservé.");
+        }
+
         // Réservation immédiate du créneau pour prévenir les conflits concurrents
         disp.setStatut("RESERVE");
         disponibiliteRepository.save(disp);
@@ -87,11 +92,12 @@ public class RendezVousServiceImpl implements RendezVousService {
         BigDecimal montantAcompte = paiementService.calculerAcompteRendezVous(montantTotal);
 
         RendezVous rdv = new RendezVous();
-        rdv.setDateHeure(LocalDateTime.of(disp.getDate(), disp.getHeureDebut()));
+        rdv.setDateHeure(debutCreneau);
         rdv.setStatut("CONFIRME");
         rdv.setMode(request.getMode() != null ? request.getMode() : "VISIO");
         rdv.setPatient(patient);
         rdv.setProfessionnel(psychologue);
+        rdv.setDisponibilite(disp);
 
         RendezVous savedRdv = rendezVousRepository.save(rdv);
 
@@ -136,6 +142,11 @@ public class RendezVousServiceImpl implements RendezVousService {
             throw new BadRequestException("Le créneau n'appartient pas à l'avocat ayant accepté le dossier");
         }
 
+        LocalDateTime debutCreneau = LocalDateTime.of(disp.getDate(), disp.getHeureDebut());
+        if (debutCreneau.isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Ce créneau est expiré et ne peut plus être réservé.");
+        }
+
         // Réservation immédiate du créneau
         disp.setStatut("RESERVE");
         disponibiliteRepository.save(disp);
@@ -144,11 +155,12 @@ public class RendezVousServiceImpl implements RendezVousService {
         BigDecimal montantAcompte = paiementService.calculerAcompteRendezVous(montantTotal);
 
         RendezVous rdv = new RendezVous();
-        rdv.setDateHeure(LocalDateTime.of(disp.getDate(), disp.getHeureDebut()));
+        rdv.setDateHeure(debutCreneau);
         rdv.setStatut("CONFIRME");
         rdv.setMode(request.getMode() != null ? request.getMode() : "CABINET");
         rdv.setPatient(justiciable);
         rdv.setProfessionnel(avocat);
+        rdv.setDisponibilite(disp);
 
         RendezVous savedRdv = rendezVousRepository.save(rdv);
 
@@ -201,6 +213,11 @@ public class RendezVousServiceImpl implements RendezVousService {
             throw new BadRequestException("Le créneau n'appartient pas à l'avocat sélectionné");
         }
 
+        LocalDateTime debutCreneau = LocalDateTime.of(disp.getDate(), disp.getHeureDebut());
+        if (debutCreneau.isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Ce créneau est expiré et ne peut plus être réservé.");
+        }
+
         // Réservation immédiate du créneau
         disp.setStatut("RESERVE");
         disponibiliteRepository.save(disp);
@@ -209,11 +226,12 @@ public class RendezVousServiceImpl implements RendezVousService {
         BigDecimal montantAcompte = paiementService.calculerAcompteRendezVous(montantTotal);
 
         RendezVous rdv = new RendezVous();
-        rdv.setDateHeure(LocalDateTime.of(disp.getDate(), disp.getHeureDebut()));
+        rdv.setDateHeure(debutCreneau);
         rdv.setStatut("CONFIRME");
         rdv.setMode(request.getMode() != null ? request.getMode() : "CABINET");
         rdv.setPatient(justiciable);
         rdv.setProfessionnel(avocat);
+        rdv.setDisponibilite(disp);
 
         RendezVous savedRdv = rendezVousRepository.save(rdv);
 
@@ -225,7 +243,7 @@ public class RendezVousServiceImpl implements RendezVousService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<RendezVousResponseDTO> getMyRendezVous() {
         String uid = authenticationContext.getRequiredFirebaseUid();
         Utilisateur user = utilisateurRepository.findById(uid)
@@ -236,6 +254,15 @@ public class RendezVousServiceImpl implements RendezVousService {
             list = rendezVousRepository.findByProfessionnelIdOrderByDateHeureDesc(uid);
         } else {
             list = rendezVousRepository.findByPatientIdOrderByDateHeureDesc(uid);
+        }
+
+        // Cohérence logique : les rendez-vous dont la date est passée basculent à l'état PASSE
+        LocalDateTime now = LocalDateTime.now();
+        for (RendezVous r : list) {
+            if ("CONFIRME".equalsIgnoreCase(r.getStatut()) && r.getDateHeure() != null && r.getDateHeure().isBefore(now)) {
+                r.setStatut("PASSE");
+                rendezVousRepository.save(r);
+            }
         }
 
         return list.stream().map(r -> toDto(r, null)).toList();
@@ -255,6 +282,17 @@ public class RendezVousServiceImpl implements RendezVousService {
         }
 
         rdv.setStatut("ANNULE");
+
+        // Si le créneau est encore dans le futur, le libérer pour d'autres réservations
+        if (rdv.getDisponibilite() != null) {
+            Disponibilite d = rdv.getDisponibilite();
+            LocalDateTime debut = LocalDateTime.of(d.getDate(), d.getHeureDebut());
+            if (debut.isAfter(LocalDateTime.now())) {
+                d.setStatut("LIBRE");
+                disponibiliteRepository.save(d);
+            }
+        }
+
         RendezVous saved = rendezVousRepository.save(rdv);
         return toDto(saved, null);
     }

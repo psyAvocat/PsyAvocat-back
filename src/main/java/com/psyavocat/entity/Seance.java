@@ -23,6 +23,9 @@ public class Seance {
 
     private String statut;
 
+    @Column(name = "rendez_vous_id")
+    private String rendezVousId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "fiche_patient_id")
     private FichePatient fichePatient;

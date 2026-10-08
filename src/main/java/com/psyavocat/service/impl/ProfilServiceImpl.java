@@ -103,7 +103,34 @@ public class ProfilServiceImpl implements ProfilService {
     @Override
     public UserProfileResponse createAvocatProfile(CreateAvocatRequest request) {
         AuthenticatedUser authUser = getAuthenticatedUserOrThrow();
-        checkIfProfileAlreadyExists(authUser.getFirebaseUid());
+        java.util.Optional<Utilisateur> existingOpt = utilisateurRepository.findById(authUser.getFirebaseUid());
+        if (existingOpt.isPresent()) {
+            Utilisateur existing = existingOpt.get();
+            if (existing instanceof Avocat existingAvocat && "PENDING".equalsIgnoreCase(existingAvocat.getStatutValidation())) {
+                existingAvocat.setNom(request.getNom());
+                existingAvocat.setPrenom(request.getPrenom());
+                existingAvocat.setTelephone(request.getTelephone());
+                existingAvocat.setBiographie(request.getBiographie());
+                existingAvocat.setVille(request.getVille());
+                existingAvocat.setAdresse(request.getAdresse());
+                existingAvocat.setModeConsultation(request.getModeConsultation());
+                existingAvocat.setNumeroBarreau(request.getNumeroBarreau());
+                if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
+                    List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
+                    for (Specialite s : specialites) {
+                        String resolved = s.resolveTypeProfessionnel();
+                        if ("PSYCHOLOGUE".equalsIgnoreCase(resolved)) {
+                            throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un avocat.");
+                        }
+                    }
+                    existingAvocat.setSpecialites(specialites);
+                }
+                Avocat saved = avocatRepository.save(existingAvocat);
+                return userMapper.toProfileResponse(saved);
+            } else {
+                throw new ConflictException("Un profil métier existe déjà pour cet utilisateur");
+            }
+        }
 
         Avocat avocat = new Avocat();
         avocat.setId(authUser.getFirebaseUid());
@@ -149,7 +176,34 @@ public class ProfilServiceImpl implements ProfilService {
     @Override
     public UserProfileResponse createPsychologueProfile(CreatePsychologueRequest request) {
         AuthenticatedUser authUser = getAuthenticatedUserOrThrow();
-        checkIfProfileAlreadyExists(authUser.getFirebaseUid());
+        java.util.Optional<Utilisateur> existingOpt = utilisateurRepository.findById(authUser.getFirebaseUid());
+        if (existingOpt.isPresent()) {
+            Utilisateur existing = existingOpt.get();
+            if (existing instanceof Psychologue existingPsychologue && "PENDING".equalsIgnoreCase(existingPsychologue.getStatutValidation())) {
+                existingPsychologue.setNom(request.getNom());
+                existingPsychologue.setPrenom(request.getPrenom());
+                existingPsychologue.setTelephone(request.getTelephone());
+                existingPsychologue.setBiographie(request.getBiographie());
+                existingPsychologue.setVille(request.getVille());
+                existingPsychologue.setAdresse(request.getAdresse());
+                existingPsychologue.setModeConsultation(request.getModeConsultation());
+                existingPsychologue.setNumeroAgrement(request.getNumeroAgrement());
+                if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
+                    List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
+                    for (Specialite s : specialites) {
+                        String resolved = s.resolveTypeProfessionnel();
+                        if ("AVOCAT".equalsIgnoreCase(resolved)) {
+                            throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un psychologue.");
+                        }
+                    }
+                    existingPsychologue.setSpecialites(specialites);
+                }
+                Psychologue saved = psychologueRepository.save(existingPsychologue);
+                return userMapper.toProfileResponse(saved);
+            } else {
+                throw new ConflictException("Un profil métier existe déjà pour cet utilisateur");
+            }
+        }
 
         Psychologue psychologue = new Psychologue();
         psychologue.setId(authUser.getFirebaseUid());
@@ -198,35 +252,39 @@ public class ProfilServiceImpl implements ProfilService {
         Utilisateur utilisateur = utilisateurRepository.findById(uid)
                 .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
 
-        if (request.getNom() != null) utilisateur.setNom(request.getNom());
-        if (request.getPrenom() != null) utilisateur.setPrenom(request.getPrenom());
-        if (request.getTelephone() != null) utilisateur.setTelephone(request.getTelephone());
-
         if (utilisateur instanceof Professionnel pro) {
-            if (request.getBiographie() != null) pro.setBiographie(request.getBiographie());
-            if (request.getVille() != null) pro.setVille(request.getVille());
-            if (request.getAdresse() != null) pro.setAdresse(request.getAdresse());
-            if (request.getModeConsultation() != null) pro.setModeConsultation(request.getModeConsultation());
-            if (request.getLangues() != null) pro.setLangues(request.getLangues());
-            if (request.getPhotoUrl() != null) pro.setPhotoUrl(request.getPhotoUrl());
-
-            // Règle d'immutabilité : données sensibles protégées
-            if ("PENDING".equalsIgnoreCase(pro.getStatutValidation())) {
-                if (request.getSpecialiteIds() != null) {
-                    throw new com.psyavocat.exception.ForbiddenException("Modification des spécialités interdite pendant l'instruction du dossier.");
-                }
-            } else if (request.getSpecialiteIds() != null) {
-                List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
-                pro.setSpecialites(specialites);
+            // Règle de conformité : Les professionnels ne peuvent modifier QUE leur numéro, adresse et email
+            if (request.getTelephone() != null) {
+                utilisateur.setTelephone(request.getTelephone().trim());
             }
-            
-            if (pro instanceof Avocat avocat && request.getNumeroBarreau() != null) {
-                if (avocat.getNumeroBarreau() != null && !avocat.getNumeroBarreau().trim().isEmpty() && !avocat.getNumeroBarreau().equals(request.getNumeroBarreau())) {
-                    throw new com.psyavocat.exception.ForbiddenException("Le numéro de barreau est une donnée certifiée et ne peut plus être modifié.");
+            if (request.getAdresse() != null) {
+                pro.setAdresse(request.getAdresse().trim());
+            }
+            if (request.getVille() != null) {
+                pro.setVille(request.getVille().trim());
+            }
+            if (request.getEmail() != null && !request.getEmail().trim().isEmpty()) {
+                String newEmail = request.getEmail().trim().toLowerCase();
+                if (!newEmail.equalsIgnoreCase(utilisateur.getEmail())) {
+                    if (utilisateurRepository.existsByEmail(newEmail)) {
+                        throw new ConflictException("Cette adresse e-mail est déjà associée à un autre compte.");
+                    }
+                    utilisateur.setEmail(newEmail);
                 }
-            } else if (pro instanceof Psychologue psychologue && request.getNumeroAgrement() != null) {
-                if (psychologue.getNumeroAgrement() != null && !psychologue.getNumeroAgrement().trim().isEmpty() && !psychologue.getNumeroAgrement().equals(request.getNumeroAgrement())) {
-                    throw new com.psyavocat.exception.ForbiddenException("Le numéro d'agrément est une donnée certifiée et ne peut plus être modifié.");
+            }
+            // Nom, prénom, numéro de barreau / agrément sont certifiés par l'administration et verrouillés
+        } else {
+            // Patient ou Justiciable
+            if (request.getNom() != null) utilisateur.setNom(request.getNom());
+            if (request.getPrenom() != null) utilisateur.setPrenom(request.getPrenom());
+            if (request.getTelephone() != null) utilisateur.setTelephone(request.getTelephone());
+            if (request.getEmail() != null && !request.getEmail().trim().isEmpty()) {
+                String newEmail = request.getEmail().trim().toLowerCase();
+                if (!newEmail.equalsIgnoreCase(utilisateur.getEmail())) {
+                    if (utilisateurRepository.existsByEmail(newEmail)) {
+                        throw new ConflictException("Cette adresse e-mail est déjà associée à un autre compte.");
+                    }
+                    utilisateur.setEmail(newEmail);
                 }
             }
         }

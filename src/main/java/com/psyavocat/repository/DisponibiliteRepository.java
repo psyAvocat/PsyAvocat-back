@@ -18,5 +18,17 @@ public interface DisponibiliteRepository extends JpaRepository<Disponibilite, St
 
     boolean existsByProfessionnelIdAndDateAndHeureDebut(String professionnelId, LocalDate date, java.time.LocalTime heureDebut);
 
+    List<Disponibilite> findByProfessionnelIdAndDate(String professionnelId, LocalDate date);
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT d FROM Disponibilite d WHERE d.professionnel.id = :proId AND d.date = :date AND d.heureDebut < :heureFin AND d.heureFin > :heureDebut"
+    )
+    List<Disponibilite> findConflictingDisponibilites(
+            @org.springframework.data.repository.query.Param("proId") String professionnelId,
+            @org.springframework.data.repository.query.Param("date") LocalDate date,
+            @org.springframework.data.repository.query.Param("heureDebut") java.time.LocalTime heureDebut,
+            @org.springframework.data.repository.query.Param("heureFin") java.time.LocalTime heureFin
+    );
+
     long countByProfessionnelId(String professionnelId);
 }
