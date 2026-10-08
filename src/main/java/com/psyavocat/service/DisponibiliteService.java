@@ -19,4 +19,10 @@ public interface DisponibiliteService {
     void deleteDisponibilite(String id);
 
     List<DisponibiliteResponseDTO> getDisponibilitesLibres(String professionnelId);
+
+    /**
+     * Créneaux à venir d'un professionnel, libres ET réservés (pour la légende du calendrier).
+     * Aucune information sur le client d'un créneau réservé n'est exposée.
+     */
+    List<DisponibiliteResponseDTO> getCreneauxAVenir(String professionnelId);
 }

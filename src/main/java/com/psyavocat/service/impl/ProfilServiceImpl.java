@@ -9,6 +9,8 @@ import com.psyavocat.repository.*;
 import com.psyavocat.security.AuthenticatedUser;
 import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.ProfilService;
+import com.psyavocat.service.support.ClientAccounts;
+import com.psyavocat.service.support.PhoneNumbers;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +32,7 @@ public class ProfilServiceImpl implements ProfilService {
     private final com.psyavocat.storage.service.ImageStorageService imageStorageService;
     private final AdministrateurRepository administrateurRepository;
     private final com.psyavocat.service.NotificationService notificationService;
+    private final ClientRepository clientRepository;
 
     public ProfilServiceImpl(
             AuthenticationContext authenticationContext,
@@ -42,7 +45,8 @@ public class ProfilServiceImpl implements ProfilService {
             UserMapper userMapper,
             com.psyavocat.storage.service.ImageStorageService imageStorageService,
             AdministrateurRepository administrateurRepository,
-            com.psyavocat.service.NotificationService notificationService
+            com.psyavocat.service.NotificationService notificationService,
+            ClientRepository clientRepository
     ) {
         this.authenticationContext = authenticationContext;
         this.utilisateurRepository = utilisateurRepository;
@@ -55,6 +59,7 @@ public class ProfilServiceImpl implements ProfilService {
         this.imageStorageService = imageStorageService;
         this.administrateurRepository = administrateurRepository;
         this.notificationService = notificationService;
+        this.clientRepository = clientRepository;
     }
 
     @Override
@@ -67,6 +72,23 @@ public class ProfilServiceImpl implements ProfilService {
     }
 
     @Override
+    public UserProfileResponse createClientProfile(CreateClientRequest request) {
+        AuthenticatedUser authUser = getAuthenticatedUserOrThrow();
+        checkIfProfileAlreadyExists(authUser.getFirebaseUid());
+
+        Client client = new Client();
+        client.setId(authUser.getFirebaseUid());
+        client.setEmail(authUser.getEmail());
+        client.setNom(request.getNom().trim());
+        client.setPrenom(request.getPrenom().trim());
+        client.setTelephone(validerTelephone(request.getTelephone(), authUser.getFirebaseUid(), true));
+        client.setDateInscription(LocalDate.now());
+
+        Client saved = clientRepository.save(client);
+        return userMapper.toProfileResponse(saved);
+    }
+
+    @Override
     public UserProfileResponse createPatientProfile(CreatePatientRequest request) {
         AuthenticatedUser authUser = getAuthenticatedUserOrThrow();
         checkIfProfileAlreadyExists(authUser.getFirebaseUid());
@@ -76,7 +98,7 @@ public class ProfilServiceImpl implements ProfilService {
         patient.setEmail(authUser.getEmail());
         patient.setNom(request.getNom());
         patient.setPrenom(request.getPrenom());
-        patient.setTelephone(request.getTelephone());
+        patient.setTelephone(validerTelephone(request.getTelephone(), authUser.getFirebaseUid(), false));
         patient.setDateInscription(LocalDate.now());
 
         Patient saved = patientRepository.save(patient);
@@ -93,7 +115,7 @@ public class ProfilServiceImpl implements ProfilService {
         justiciable.setEmail(authUser.getEmail());
         justiciable.setNom(request.getNom());
         justiciable.setPrenom(request.getPrenom());
-        justiciable.setTelephone(request.getTelephone());
+        justiciable.setTelephone(validerTelephone(request.getTelephone(), authUser.getFirebaseUid(), false));
         justiciable.setDateInscription(LocalDate.now());
 
         Justiciable saved = justiciableRepository.save(justiciable);
@@ -109,12 +131,12 @@ public class ProfilServiceImpl implements ProfilService {
             if (existing instanceof Avocat existingAvocat && "PENDING".equalsIgnoreCase(existingAvocat.getStatutValidation())) {
                 existingAvocat.setNom(request.getNom());
                 existingAvocat.setPrenom(request.getPrenom());
-                existingAvocat.setTelephone(request.getTelephone());
+                existingAvocat.setTelephone(validerTelephone(request.getTelephone(), authUser.getFirebaseUid(), false));
                 existingAvocat.setBiographie(request.getBiographie());
                 existingAvocat.setVille(request.getVille());
                 existingAvocat.setAdresse(request.getAdresse());
                 existingAvocat.setModeConsultation(request.getModeConsultation());
-                existingAvocat.setNumeroBarreau(request.getNumeroBarreau());
+                existingAvocat.setNumeroBarreau(validerNumeroBarreau(request.getNumeroBarreau(), authUser.getFirebaseUid()));
                 if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
                     List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
                     for (Specialite s : specialites) {
@@ -137,12 +159,12 @@ public class ProfilServiceImpl implements ProfilService {
         avocat.setEmail(authUser.getEmail());
         avocat.setNom(request.getNom());
         avocat.setPrenom(request.getPrenom());
-        avocat.setTelephone(request.getTelephone());
+        avocat.setTelephone(validerTelephone(request.getTelephone(), authUser.getFirebaseUid(), false));
         avocat.setBiographie(request.getBiographie());
         avocat.setVille(request.getVille());
         avocat.setAdresse(request.getAdresse());
         avocat.setModeConsultation(request.getModeConsultation());
-        avocat.setNumeroBarreau(request.getNumeroBarreau());
+        avocat.setNumeroBarreau(validerNumeroBarreau(request.getNumeroBarreau(), authUser.getFirebaseUid()));
         avocat.setStatutValidation("PENDING");
         avocat.setDateInscription(LocalDate.now());
 
@@ -182,12 +204,12 @@ public class ProfilServiceImpl implements ProfilService {
             if (existing instanceof Psychologue existingPsychologue && "PENDING".equalsIgnoreCase(existingPsychologue.getStatutValidation())) {
                 existingPsychologue.setNom(request.getNom());
                 existingPsychologue.setPrenom(request.getPrenom());
-                existingPsychologue.setTelephone(request.getTelephone());
+                existingPsychologue.setTelephone(validerTelephone(request.getTelephone(), authUser.getFirebaseUid(), false));
                 existingPsychologue.setBiographie(request.getBiographie());
                 existingPsychologue.setVille(request.getVille());
                 existingPsychologue.setAdresse(request.getAdresse());
                 existingPsychologue.setModeConsultation(request.getModeConsultation());
-                existingPsychologue.setNumeroAgrement(request.getNumeroAgrement());
+                existingPsychologue.setNumeroAgrement(validerNumeroAgrement(request.getNumeroAgrement(), authUser.getFirebaseUid()));
                 if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
                     List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
                     for (Specialite s : specialites) {
@@ -210,12 +232,12 @@ public class ProfilServiceImpl implements ProfilService {
         psychologue.setEmail(authUser.getEmail());
         psychologue.setNom(request.getNom());
         psychologue.setPrenom(request.getPrenom());
-        psychologue.setTelephone(request.getTelephone());
+        psychologue.setTelephone(validerTelephone(request.getTelephone(), authUser.getFirebaseUid(), false));
         psychologue.setBiographie(request.getBiographie());
         psychologue.setVille(request.getVille());
         psychologue.setAdresse(request.getAdresse());
         psychologue.setModeConsultation(request.getModeConsultation());
-        psychologue.setNumeroAgrement(request.getNumeroAgrement());
+        psychologue.setNumeroAgrement(validerNumeroAgrement(request.getNumeroAgrement(), authUser.getFirebaseUid()));
         psychologue.setStatutValidation("PENDING");
         psychologue.setDateInscription(LocalDate.now());
 
@@ -255,7 +277,7 @@ public class ProfilServiceImpl implements ProfilService {
         if (utilisateur instanceof Professionnel pro) {
             // Règle de conformité : Les professionnels ne peuvent modifier QUE leur numéro, adresse et email
             if (request.getTelephone() != null) {
-                utilisateur.setTelephone(request.getTelephone().trim());
+                utilisateur.setTelephone(validerTelephone(request.getTelephone(), uid, false));
             }
             if (request.getAdresse() != null) {
                 pro.setAdresse(request.getAdresse().trim());
@@ -274,18 +296,22 @@ public class ProfilServiceImpl implements ProfilService {
             }
             // Nom, prénom, numéro de barreau / agrément sont certifiés par l'administration et verrouillés
         } else {
-            // Patient ou Justiciable
-            if (request.getNom() != null) utilisateur.setNom(request.getNom());
-            if (request.getPrenom() != null) utilisateur.setPrenom(request.getPrenom());
-            if (request.getTelephone() != null) utilisateur.setTelephone(request.getTelephone());
-            if (request.getEmail() != null && !request.getEmail().trim().isEmpty()) {
-                String newEmail = request.getEmail().trim().toLowerCase();
-                if (!newEmail.equalsIgnoreCase(utilisateur.getEmail())) {
-                    if (utilisateurRepository.existsByEmail(newEmail)) {
-                        throw new ConflictException("Cette adresse e-mail est déjà associée à un autre compte.");
-                    }
-                    utilisateur.setEmail(newEmail);
-                }
+            // Client (profil unifié, patient ou justiciable)
+            if (request.getNom() != null) {
+                utilisateur.setNom(validerTexteObligatoire(request.getNom(), "Le nom"));
+            }
+            if (request.getPrenom() != null) {
+                utilisateur.setPrenom(validerTexteObligatoire(request.getPrenom(), "Le prénom"));
+            }
+            if (request.getTelephone() != null) {
+                utilisateur.setTelephone(validerTelephone(request.getTelephone(), uid, false));
+            }
+            // L'email est l'identifiant de connexion Firebase : le modifier ici
+            // désynchroniserait MySQL et Firebase. Il n'est donc pas modifiable.
+            if (request.getEmail() != null && !request.getEmail().trim().isEmpty()
+                    && !request.getEmail().trim().equalsIgnoreCase(utilisateur.getEmail())) {
+                throw new com.psyavocat.exception.BadRequestException(
+                        "L'adresse e-mail est votre identifiant de connexion et ne peut pas être modifiée ici.");
             }
         }
 
@@ -299,20 +325,21 @@ public class ProfilServiceImpl implements ProfilService {
         Utilisateur utilisateur = utilisateurRepository.findById(uid)
                 .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
 
-        if (!(utilisateur instanceof Professionnel pro)) {
-            throw new com.psyavocat.exception.BadRequestException("Seul un professionnel peut enregistrer une photo de profil.");
+        if (utilisateur instanceof Professionnel pro) {
+            supprimerImageSiPresente(pro.getPhotoObjectKey());
+            com.psyavocat.storage.model.StoredImage stored = imageStorageService.uploadImage(file, "avatars", pro.getId());
+            pro.setPhotoUrl(stored.getUrl());
+            pro.setPhotoObjectKey(cleObjet(stored));
+        } else if (ClientAccounts.isClient(utilisateur)) {
+            PhotoProfil photo = ClientAccounts.photoOf(utilisateur);
+            supprimerImageSiPresente(photo.getObjectKey());
+            com.psyavocat.storage.model.StoredImage stored = imageStorageService.uploadImage(file, "avatars", utilisateur.getId());
+            photo.setObjectKey(cleObjet(stored));
+        } else {
+            throw new com.psyavocat.exception.BadRequestException("Ce type de compte ne peut pas enregistrer de photo de profil.");
         }
 
-        // Supprime l'ancienne photo du stockage R2 si un identifiant existait
-        if (pro.getPhotoObjectKey() != null && !pro.getPhotoObjectKey().isBlank()) {
-            imageStorageService.deleteImage(pro.getPhotoObjectKey());
-        }
-
-        com.psyavocat.storage.model.StoredImage stored = imageStorageService.uploadImage(file, "avatars", pro.getId());
-        pro.setPhotoUrl(stored.getUrl());
-        pro.setPhotoObjectKey(stored.getObjectKey() != null ? stored.getObjectKey() : stored.getPublicId());
-
-        Professionnel saved = utilisateurRepository.save(pro);
+        Utilisateur saved = utilisateurRepository.save(utilisateur);
         return userMapper.toProfileResponse(saved);
     }
 
@@ -322,19 +349,83 @@ public class ProfilServiceImpl implements ProfilService {
         Utilisateur utilisateur = utilisateurRepository.findById(uid)
                 .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
 
-        if (!(utilisateur instanceof Professionnel pro)) {
-            throw new com.psyavocat.exception.BadRequestException("Seul un professionnel peut gérer sa photo de profil.");
+        if (utilisateur instanceof Professionnel pro) {
+            supprimerImageSiPresente(pro.getPhotoObjectKey());
+            pro.setPhotoUrl(null);
+            pro.setPhotoObjectKey(null);
+        } else if (ClientAccounts.isClient(utilisateur)) {
+            PhotoProfil photo = ClientAccounts.photoOf(utilisateur);
+            supprimerImageSiPresente(photo.getObjectKey());
+            photo.setObjectKey(null);
+        } else {
+            throw new com.psyavocat.exception.BadRequestException("Ce type de compte ne gère pas de photo de profil.");
         }
 
-        if (pro.getPhotoObjectKey() != null && !pro.getPhotoObjectKey().isBlank()) {
-            imageStorageService.deleteImage(pro.getPhotoObjectKey());
-        }
-
-        pro.setPhotoUrl(null);
-        pro.setPhotoObjectKey(null);
-
-        Professionnel saved = utilisateurRepository.save(pro);
+        Utilisateur saved = utilisateurRepository.save(utilisateur);
         return userMapper.toProfileResponse(saved);
+    }
+
+    private void supprimerImageSiPresente(String objectKey) {
+        if (objectKey != null && !objectKey.isBlank()) {
+            imageStorageService.deleteImage(objectKey);
+        }
+    }
+
+    private String cleObjet(com.psyavocat.storage.model.StoredImage stored) {
+        return stored.getObjectKey() != null ? stored.getObjectKey() : stored.getPublicId();
+    }
+
+    // ------------------------------------------------------------------
+    // Règles de cohérence des données de profil (communes à tous les comptes)
+    // ------------------------------------------------------------------
+
+    /**
+     * Téléphone normalisé, au bon format et non utilisé par un autre compte.
+     * @param obligatoire si {@code false}, un numéro vide est accepté (valeur {@code null})
+     */
+    private String validerTelephone(String brut, String uid, boolean obligatoire) {
+        if (PhoneNumbers.isBlank(brut)) {
+            if (obligatoire) {
+                throw new com.psyavocat.exception.BadRequestException("Le numéro de téléphone est obligatoire.");
+            }
+            return null;
+        }
+        String normalise = PhoneNumbers.normalize(brut);
+        if (normalise == null) {
+            throw new com.psyavocat.exception.BadRequestException(PhoneNumbers.MESSAGE_INVALIDE);
+        }
+        boolean dejaUtilise = utilisateurRepository.findAllTelephones().stream()
+                .filter(ligne -> !uid.equals(ligne[0]))
+                .anyMatch(ligne -> normalise.equals(PhoneNumbers.normalize((String) ligne[1])));
+        if (dejaUtilise) {
+            throw new ConflictException("Ce numéro de téléphone est déjà associé à un autre compte.");
+        }
+        return normalise;
+    }
+
+    /** Numéro de barreau unique (insensible à la casse) entre tous les avocats. */
+    private String validerNumeroBarreau(String brut, String uid) {
+        String numero = validerTexteObligatoire(brut, "Le numéro de barreau");
+        if (avocatRepository.existsByNumeroBarreauIgnoreCaseAndIdNot(numero, uid)) {
+            throw new ConflictException("Ce numéro de barreau est déjà utilisé par un autre avocat.");
+        }
+        return numero;
+    }
+
+    /** Numéro d'agrément unique (insensible à la casse) entre tous les psychologues. */
+    private String validerNumeroAgrement(String brut, String uid) {
+        String numero = validerTexteObligatoire(brut, "Le numéro d'agrément");
+        if (psychologueRepository.existsByNumeroAgrementIgnoreCaseAndIdNot(numero, uid)) {
+            throw new ConflictException("Ce numéro d'agrément est déjà utilisé par un autre psychologue.");
+        }
+        return numero;
+    }
+
+    private String validerTexteObligatoire(String brut, String libelle) {
+        if (brut == null || brut.isBlank()) {
+            throw new com.psyavocat.exception.BadRequestException(libelle + " est obligatoire.");
+        }
+        return brut.trim();
     }
 
     private AuthenticatedUser getAuthenticatedUserOrThrow() {

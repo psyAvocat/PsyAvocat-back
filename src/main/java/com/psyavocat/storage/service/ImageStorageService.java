@@ -28,4 +28,14 @@ public interface ImageStorageService {
      * Indique si le service est configuré et disponible.
      */
     boolean isAvailable();
+
+    /**
+     * URL d'accès temporaire (bucket privé) à une image stockée,
+     * générée au moment de la lecture pour ne jamais servir une URL expirée.
+     * @param objectKey clé d'objet de l'image
+     * @return URL d'accès, ou {@code null} si l'image ou le stockage est indisponible
+     */
+    default String getAccessUrl(String objectKey) {
+        return null;
+    }
 }

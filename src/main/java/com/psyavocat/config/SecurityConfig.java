@@ -70,6 +70,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // Endpoint public de vérification de santé
                         .requestMatchers("/health").permitAll()
+                        // WebSocket : authentifié par RealtimeHandshakeInterceptor (jeton Firebase vérifié)
+                        .requestMatchers("/ws").permitAll()
                         // Consultation publique du catalogue et orientation onboarding
                         .requestMatchers(HttpMethod.GET, "/api/orientation/questionnaires/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/questionnaires/**").permitAll()

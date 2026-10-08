@@ -2,14 +2,15 @@ package com.psyavocat.service.impl;
 
 import com.psyavocat.dto.dossier.*;
 import com.psyavocat.entity.Dossier;
-import com.psyavocat.entity.Justiciable;
+import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.exception.ForbiddenException;
 import com.psyavocat.exception.ResourceNotFoundException;
 import com.psyavocat.repository.DossierRepository;
-import com.psyavocat.repository.JusticiableRepository;
+import com.psyavocat.repository.UtilisateurRepository;
 import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.DossierService;
 import com.psyavocat.service.SoumissionDossierService;
+import com.psyavocat.service.support.ClientAccounts;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,18 +23,18 @@ import java.util.List;
 public class DossierServiceImpl implements DossierService {
 
     private final DossierRepository dossierRepository;
-    private final JusticiableRepository justiciableRepository;
+    private final UtilisateurRepository utilisateurRepository;
     private final SoumissionDossierService soumissionDossierService;
     private final AuthenticationContext authenticationContext;
 
     public DossierServiceImpl(
             DossierRepository dossierRepository,
-            JusticiableRepository justiciableRepository,
+            UtilisateurRepository utilisateurRepository,
             SoumissionDossierService soumissionDossierService,
             AuthenticationContext authenticationContext
     ) {
         this.dossierRepository = dossierRepository;
-        this.justiciableRepository = justiciableRepository;
+        this.utilisateurRepository = utilisateurRepository;
         this.soumissionDossierService = soumissionDossierService;
         this.authenticationContext = authenticationContext;
     }
@@ -41,8 +42,9 @@ public class DossierServiceImpl implements DossierService {
     @Override
     public DossierResponseDTO createDossier(CreateDossierRequest request) {
         String uid = authenticationContext.getRequiredFirebaseUid();
-        Justiciable justiciable = justiciableRepository.findById(uid)
-                .orElseThrow(() -> new ForbiddenException("Seul un justiciable peut créer un dossier juridique"));
+        Utilisateur justiciable = utilisateurRepository.findById(uid)
+                .filter(ClientAccounts::isClient)
+                .orElseThrow(() -> new ForbiddenException("Seul un client peut créer un dossier juridique"));
 
         Dossier dossier = new Dossier();
         dossier.setTitre(request.getTitre());

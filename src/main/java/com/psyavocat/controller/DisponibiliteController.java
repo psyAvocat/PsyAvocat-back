@@ -42,7 +42,13 @@ public class DisponibiliteController {
     }
 
     @GetMapping("/professionnel/{professionnelId}")
-    public ResponseEntity<List<DisponibiliteResponseDTO>> getDisponibilitesLibres(@PathVariable String professionnelId) {
-        return ResponseEntity.ok(disponibiliteService.getDisponibilitesLibres(professionnelId));
+    public ResponseEntity<List<DisponibiliteResponseDTO>> getDisponibilitesLibres(
+            @PathVariable String professionnelId,
+            @RequestParam(defaultValue = "false") boolean inclureReserves
+    ) {
+        // Par défaut (contrat historique) : uniquement les créneaux libres.
+        return ResponseEntity.ok(inclureReserves
+                ? disponibiliteService.getCreneauxAVenir(professionnelId)
+                : disponibiliteService.getDisponibilitesLibres(professionnelId));
     }
 }

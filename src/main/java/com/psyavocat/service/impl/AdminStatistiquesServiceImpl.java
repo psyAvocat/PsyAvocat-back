@@ -38,6 +38,7 @@ public class AdminStatistiquesServiceImpl implements AdminStatistiquesService {
     private final PsychologueRepository psychologueRepository;
     private final AvocatRepository avocatRepository;
     private final AdministrateurRepository administrateurRepository;
+    private final ClientRepository clientRepository;
     private final Clock clock;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -49,10 +50,11 @@ public class AdminStatistiquesServiceImpl implements AdminStatistiquesService {
                                         JusticiableRepository justiciableRepository,
                                         PsychologueRepository psychologueRepository,
                                         AvocatRepository avocatRepository,
-                                        AdministrateurRepository administrateurRepository) {
+                                        AdministrateurRepository administrateurRepository,
+                                        ClientRepository clientRepository) {
         this(utilisateurRepository, professionnelRepository, rendezVousRepository, signalementRepository,
                 patientRepository, justiciableRepository, psychologueRepository, avocatRepository,
-                administrateurRepository, Clock.systemDefaultZone());
+                administrateurRepository, clientRepository, Clock.systemDefaultZone());
     }
 
     /** Constructeur permettant d'injecter une horloge fixe dans les tests. */
@@ -65,6 +67,7 @@ public class AdminStatistiquesServiceImpl implements AdminStatistiquesService {
                                  PsychologueRepository psychologueRepository,
                                  AvocatRepository avocatRepository,
                                  AdministrateurRepository administrateurRepository,
+                                 ClientRepository clientRepository,
                                  Clock clock) {
         this.utilisateurRepository = utilisateurRepository;
         this.professionnelRepository = professionnelRepository;
@@ -75,6 +78,7 @@ public class AdminStatistiquesServiceImpl implements AdminStatistiquesService {
         this.psychologueRepository = psychologueRepository;
         this.avocatRepository = avocatRepository;
         this.administrateurRepository = administrateurRepository;
+        this.clientRepository = clientRepository;
         this.clock = clock;
     }
 
@@ -87,7 +91,7 @@ public class AdminStatistiquesServiceImpl implements AdminStatistiquesService {
                 moisCourant.atDay(1).atStartOfDay(),
                 moisCourant.plusMonths(1).atDay(1).atStartOfDay());
 
-        long totalClients = patientRepository.count() + justiciableRepository.count();
+        long totalClients = clientRepository.count() + patientRepository.count() + justiciableRepository.count();
 
         return DashboardStatsDTO.builder()
                 .totalUtilisateurs(totalClients)
@@ -185,6 +189,7 @@ public class AdminStatistiquesServiceImpl implements AdminStatistiquesService {
 
     private List<RepartitionDTO> repartitionProfils() {
         Map<String, Long> profils = new LinkedHashMap<>();
+        profils.put("CLIENT", clientRepository.count());
         profils.put("PATIENT", patientRepository.count());
         profils.put("JUSTICIABLE", justiciableRepository.count());
         profils.put("PSYCHOLOGUE", psychologueRepository.count());

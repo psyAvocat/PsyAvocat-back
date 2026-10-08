@@ -22,6 +22,12 @@ public class NotificationController {
         return ResponseEntity.ok(notificationService.getMesNotifications());
     }
 
+    /** Nombre de notifications non lues de l'utilisateur connecté (déjà appelé par Angular). */
+    @GetMapping("/unread-count")
+    public ResponseEntity<Long> countUnread() {
+        return ResponseEntity.ok(notificationService.countUnread());
+    }
+
     @PatchMapping("/{id}/lu")
     public ResponseEntity<Void> markAsRead(@PathVariable String id) {
         notificationService.markAsRead(id);

@@ -21,6 +21,10 @@ public interface UtilisateurRepository extends JpaRepository<Utilisateur, String
 
     boolean existsByEmail(String email);
 
+    /** Identifiants et téléphones renseignés : [id (String), telephone (String)]. */
+    @Query("SELECT u.id, u.telephone FROM Utilisateur u WHERE u.telephone IS NOT NULL")
+    List<Object[]> findAllTelephones();
+
     /**
      * Nombre d'inscriptions par mois civil sur l'intervalle [debut, fin].
      * Chaque ligne : [annee (Integer), mois 1-12 (Integer), total (Long)].

@@ -16,6 +16,10 @@ public interface RendezVousRepository extends JpaRepository<RendezVous, String> 
 
     List<RendezVous> findByProfessionnelIdOrderByDateHeureDesc(String professionnelId);
 
+    /** Rendez-vous d'un statut donné dont le début est dans [debut, fin[ (rappels planifiés). */
+    List<RendezVous> findByStatutAndDateHeureGreaterThanEqualAndDateHeureLessThan(
+            String statut, LocalDateTime debut, LocalDateTime fin);
+
     /** Nombre de rendez-vous dont la date est dans [debut, fin[. */
     long countByDateHeureGreaterThanEqualAndDateHeureLessThan(LocalDateTime debut, LocalDateTime fin);
 

@@ -29,9 +29,13 @@ public class Dossier {
 
     private String statut;
 
+    /**
+     * Client propriétaire : profil client unifié ({@link Client}) ou ancien {@link Justiciable}.
+     * Typé {@link Utilisateur} pour accepter les deux (voir ClientAccountMigration).
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "justiciable_id")
-    private Justiciable justiciable;
+    private Utilisateur justiciable;
 
     @OneToMany(mappedBy = "dossier", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PieceJointe> piecesJointes = new ArrayList<>();

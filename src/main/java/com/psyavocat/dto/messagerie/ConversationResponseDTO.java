@@ -25,4 +25,9 @@ public class ConversationResponseDTO {
     private String correspondantPrenom;
     private MessageResponseDTO dernierMessage;
     private Long messagesNonLus;
+
+    // --- Champs ajoutés (rétrocompatibles) ---
+    /** AVOCAT, PSYCHOLOGUE ou CLIENT : permet de ranger la conversation dans le bon univers. */
+    private String correspondantType;
+    private String correspondantPhotoUrl;
 }

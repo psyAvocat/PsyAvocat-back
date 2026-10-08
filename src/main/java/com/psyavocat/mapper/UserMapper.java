@@ -11,6 +11,12 @@ import java.util.List;
 @Component
 public class UserMapper {
 
+    private final MediaUrlResolver mediaUrlResolver;
+
+    public UserMapper(MediaUrlResolver mediaUrlResolver) {
+        this.mediaUrlResolver = mediaUrlResolver;
+    }
+
     public UserProfileResponse toProfileResponse(Utilisateur utilisateur) {
         if (utilisateur == null) {
             return null;
@@ -22,9 +28,12 @@ public class UserMapper {
                 .prenom(utilisateur.getPrenom())
                 .email(utilisateur.getEmail())
                 .telephone(utilisateur.getTelephone())
-                .dateInscription(utilisateur.getDateInscription());
+                .dateInscription(utilisateur.getDateInscription())
+                .photoUrl(mediaUrlResolver.photoUrlOf(utilisateur));
 
-        if (utilisateur instanceof Patient) {
+        if (utilisateur instanceof Client) {
+            builder.typeUtilisateur("CLIENT");
+        } else if (utilisateur instanceof Patient) {
             builder.typeUtilisateur("PATIENT");
         } else if (utilisateur instanceof Justiciable) {
             builder.typeUtilisateur("JUSTICIABLE");
@@ -49,7 +58,6 @@ public class UserMapper {
                 .adresse(pro.getAdresse())
                 .modeConsultation(pro.getModeConsultation())
                 .statutValidation(pro.getStatutValidation())
-                .photoUrl(pro.getPhotoUrl())
                 .langues(pro.getLangues());
 
         if (pro.getSpecialites() != null) {

@@ -11,4 +11,6 @@ public interface SignalementRepository extends JpaRepository<Signalement, String
     List<Signalement> findByStatut(String statut);
 
     long countByStatut(String statut);
+
+    boolean existsByAuteurIdAndUtilisateurViseIdAndStatut(String auteurId, String utilisateurViseId, String statut);
 }

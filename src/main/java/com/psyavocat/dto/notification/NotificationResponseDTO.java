@@ -18,4 +18,9 @@ public class NotificationResponseDTO {
     private LocalDateTime dateEnvoi;
     private String lienVisio;
     private boolean lu;
+    private String titre;
+    private LocalDateTime dateLecture;
+    private String univers;
+    private String ressourceType;
+    private String ressourceId;
 }

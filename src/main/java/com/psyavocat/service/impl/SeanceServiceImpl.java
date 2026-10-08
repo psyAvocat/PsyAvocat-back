@@ -3,7 +3,7 @@ package com.psyavocat.service.impl;
 import com.psyavocat.dto.seance.*;
 import com.psyavocat.entity.FichePatient;
 import com.psyavocat.entity.NoteSeance;
-import com.psyavocat.entity.Patient;
+import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.entity.Psychologue;
 import com.psyavocat.entity.Seance;
 import com.psyavocat.exception.ForbiddenException;
@@ -11,6 +11,7 @@ import com.psyavocat.exception.ResourceNotFoundException;
 import com.psyavocat.repository.*;
 import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.SeanceService;
+import com.psyavocat.service.support.ClientAccounts;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,7 +29,7 @@ public class SeanceServiceImpl implements SeanceService {
     private final SeanceRepository seanceRepository;
     private final NoteSeanceRepository noteSeanceRepository;
     private final PsychologueRepository psychologueRepository;
-    private final PatientRepository patientRepository;
+    private final UtilisateurRepository utilisateurRepository;
     private final RendezVousRepository rendezVousRepository;
     private final AuthenticationContext authenticationContext;
 
@@ -37,7 +38,7 @@ public class SeanceServiceImpl implements SeanceService {
             SeanceRepository seanceRepository,
             NoteSeanceRepository noteSeanceRepository,
             PsychologueRepository psychologueRepository,
-            PatientRepository patientRepository,
+            UtilisateurRepository utilisateurRepository,
             RendezVousRepository rendezVousRepository,
             AuthenticationContext authenticationContext
     ) {
@@ -45,7 +46,7 @@ public class SeanceServiceImpl implements SeanceService {
         this.seanceRepository = seanceRepository;
         this.noteSeanceRepository = noteSeanceRepository;
         this.psychologueRepository = psychologueRepository;
-        this.patientRepository = patientRepository;
+        this.utilisateurRepository = utilisateurRepository;
         this.rendezVousRepository = rendezVousRepository;
         this.authenticationContext = authenticationContext;
     }
@@ -95,7 +96,8 @@ public class SeanceServiceImpl implements SeanceService {
         Psychologue psychologue = psychologueRepository.findById(uid)
                 .orElseThrow(() -> new ForbiddenException("Seul un psychologue peut créer une séance de consultation"));
 
-        Patient patient = patientRepository.findById(request.getPatientId())
+        Utilisateur patient = utilisateurRepository.findById(request.getPatientId())
+                .filter(ClientAccounts::isClient)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient introuvable"));
 
         // Récupérer ou initialiser la fiche patient
@@ -193,7 +195,7 @@ public class SeanceServiceImpl implements SeanceService {
                 .notes(noteDtos);
 
         if (s.getFichePatient() != null && s.getFichePatient().getPatient() != null) {
-            Patient p = s.getFichePatient().getPatient();
+            Utilisateur p = s.getFichePatient().getPatient();
             builder.patientId(p.getId())
                    .patientNom(p.getNom())
                    .patientPrenom(p.getPrenom())

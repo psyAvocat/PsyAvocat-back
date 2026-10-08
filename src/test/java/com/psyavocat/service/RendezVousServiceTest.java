@@ -4,6 +4,7 @@ import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousPsyRequest;
 import com.psyavocat.dto.rendezvous.RendezVousResponseDTO;
 import com.psyavocat.entity.Avocat;
+import com.psyavocat.entity.TarifProfessionnel;
 import com.psyavocat.entity.Disponibilite;
 import com.psyavocat.entity.Dossier;
 import com.psyavocat.entity.Justiciable;
@@ -33,6 +34,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -73,6 +75,12 @@ class RendezVousServiceTest {
     @Mock
     private AuthenticationContext authenticationContext;
 
+    @Mock
+    private com.psyavocat.service.notification.RendezVousEvenements evenements;
+
+    @Mock
+    private com.psyavocat.mapper.MediaUrlResolver mediaUrlResolver;
+
     private RendezVousServiceImpl rendezVousService;
 
     private Utilisateur patient;
@@ -91,7 +99,9 @@ class RendezVousServiceTest {
                 dossierRepository,
                 paiementService,
                 utilisateurRepository,
-                authenticationContext
+                authenticationContext,
+                evenements,
+                mediaUrlResolver
         );
 
         patient = new Patient();
@@ -104,6 +114,10 @@ class RendezVousServiceTest {
         psychologue.setNom("Moreau");
         psychologue.setPrenom("Claire");
         psychologue.setStatutValidation("APPROVED");
+        TarifProfessionnel tarifPsy = new TarifProfessionnel();
+        tarifPsy.setMontant(new BigDecimal("80.00"));
+        tarifPsy.setActif(true);
+        psychologue.getTarifs().add(tarifPsy);
 
         avocat = new Avocat();
         avocat.setId("avocat-uid-789");
@@ -126,7 +140,7 @@ class RendezVousServiceTest {
         when(authenticationContext.getRequiredFirebaseUid()).thenReturn(patient.getId());
         when(utilisateurRepository.findById(patient.getId())).thenReturn(Optional.of(patient));
         when(psychologueRepository.findById(psychologue.getId())).thenReturn(Optional.of(psychologue));
-        when(disponibiliteRepository.findById(disponibilite.getId())).thenReturn(Optional.of(disponibilite));
+        when(disponibiliteRepository.findByIdForUpdate(disponibilite.getId())).thenReturn(Optional.of(disponibilite));
 
         BigDecimal montantTotal = new BigDecimal("80.00");
         BigDecimal montantAcompte = new BigDecimal("16.00");
@@ -172,12 +186,12 @@ class RendezVousServiceTest {
         when(authenticationContext.getRequiredFirebaseUid()).thenReturn(patient.getId());
         when(utilisateurRepository.findById(patient.getId())).thenReturn(Optional.of(patient));
         when(psychologueRepository.findById(psychologue.getId())).thenReturn(Optional.of(psychologue));
-        when(disponibiliteRepository.findById(disponibilite.getId())).thenReturn(Optional.of(disponibilite));
+        when(disponibiliteRepository.findByIdForUpdate(disponibilite.getId())).thenReturn(Optional.of(disponibilite));
 
         CreateRendezVousPsyRequest request = new CreateRendezVousPsyRequest();
         request.setPsychologueId(psychologue.getId());
         request.setDisponibiliteId(disponibilite.getId());
-        request.setMontantTotal(new BigDecimal("90.00"));
+        request.setMontantTotal(new BigDecimal("80.00"));
 
         assertThatThrownBy(() -> rendezVousService.createRendezVousPsychologue(request))
                 .isInstanceOf(BadRequestException.class)
@@ -215,7 +229,7 @@ class RendezVousServiceTest {
         when(authenticationContext.getRequiredFirebaseUid()).thenReturn(justiciable.getId());
         when(utilisateurRepository.findById(justiciable.getId())).thenReturn(Optional.of(justiciable));
         when(soumissionDossierRepository.findById(soumission.getId())).thenReturn(Optional.of(soumission));
-        when(disponibiliteRepository.findById(disponibilite.getId())).thenReturn(Optional.of(disponibilite));
+        when(disponibiliteRepository.findByIdForUpdate(disponibilite.getId())).thenReturn(Optional.of(disponibilite));
         when(soumissionDossierRepository.findByDossierId(dossier.getId())).thenReturn(List.of(soumission, autreSoumission));
 
         BigDecimal acompte = new BigDecimal("40.00");
@@ -300,6 +314,104 @@ class RendezVousServiceTest {
     }
 
     @Test
+    @DisplayName("Réservation refusée si le montant ne correspond à aucun tarif publié")
+    void testCreateRendezVousPsychologue_MontantHorsTarif_Rejet() {
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(patient.getId());
+        when(utilisateurRepository.findById(patient.getId())).thenReturn(Optional.of(patient));
+        when(psychologueRepository.findById(psychologue.getId())).thenReturn(Optional.of(psychologue));
+
+        CreateRendezVousPsyRequest request = new CreateRendezVousPsyRequest();
+        request.setPsychologueId(psychologue.getId());
+        request.setDisponibiliteId(disponibilite.getId());
+        request.setMontantTotal(new BigDecimal("1.00"));
+
+        assertThatThrownBy(() -> rendezVousService.createRendezVousPsychologue(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("aucun tarif");
+        verify(rendezVousRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Un professionnel ne peut pas réserver comme un client")
+    void testCreateRendezVous_ParProfessionnel_Forbidden() {
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(avocat.getId());
+        when(utilisateurRepository.findById(avocat.getId())).thenReturn(Optional.of(avocat));
+
+        CreateRendezVousPsyRequest request = new CreateRendezVousPsyRequest();
+        request.setPsychologueId(psychologue.getId());
+        request.setDisponibiliteId(disponibilite.getId());
+        request.setMontantTotal(new BigDecimal("80.00"));
+
+        assertThatThrownBy(() -> rendezVousService.createRendezVousPsychologue(request))
+                .isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    @DisplayName("Modification : le RDV passe sur le nouveau créneau, l'ancien est libéré, les parties sont notifiées")
+    void testModifierCreneau_Succes() {
+        RendezVous rdv = new RendezVous();
+        rdv.setId("rdv-1");
+        rdv.setStatut("CONFIRME");
+        rdv.setPatient(patient);
+        rdv.setProfessionnel(psychologue);
+        disponibilite.setStatut("RESERVE");
+        rdv.setDisponibilite(disponibilite);
+        rdv.setDateHeure(LocalDateTime.of(disponibilite.getDate(), disponibilite.getHeureDebut()));
+
+        Disponibilite nouveau = new Disponibilite();
+        nouveau.setId("disp-2");
+        nouveau.setDate(LocalDate.now().plusDays(3));
+        nouveau.setHeureDebut(LocalTime.of(10, 0));
+        nouveau.setHeureFin(LocalTime.of(11, 0));
+        nouveau.setStatut("LIBRE");
+        nouveau.setProfessionnel(psychologue);
+
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(patient.getId());
+        when(rendezVousRepository.findById("rdv-1")).thenReturn(Optional.of(rdv));
+        when(disponibiliteRepository.findByIdForUpdate("disp-2")).thenReturn(Optional.of(nouveau));
+        when(rendezVousRepository.save(any(RendezVous.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        RendezVousResponseDTO dto = rendezVousService.modifierCreneau("rdv-1",
+                new com.psyavocat.dto.rendezvous.ModifierCreneauRequest("disp-2"));
+
+        assertThat(dto.getDisponibiliteId()).isEqualTo("disp-2");
+        assertThat(dto.getDureeMinutes()).isEqualTo(60);
+        assertThat(nouveau.getStatut()).isEqualTo("RESERVE");
+        assertThat(disponibilite.getStatut()).isEqualTo("LIBRE");
+        verify(evenements).rendezVousModifie(rdv);
+    }
+
+    @Test
+    @DisplayName("Modification refusée si le nouveau créneau vient d'être pris (conflit)")
+    void testModifierCreneau_CreneauDejaPris_Rejet() {
+        RendezVous rdv = new RendezVous();
+        rdv.setId("rdv-1");
+        rdv.setStatut("CONFIRME");
+        rdv.setPatient(patient);
+        rdv.setProfessionnel(psychologue);
+        rdv.setDisponibilite(disponibilite);
+        rdv.setDateHeure(LocalDateTime.of(disponibilite.getDate(), disponibilite.getHeureDebut()));
+
+        Disponibilite pris = new Disponibilite();
+        pris.setId("disp-2");
+        pris.setDate(LocalDate.now().plusDays(3));
+        pris.setHeureDebut(LocalTime.of(10, 0));
+        pris.setHeureFin(LocalTime.of(11, 0));
+        pris.setStatut("RESERVE");
+        pris.setProfessionnel(psychologue);
+
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(patient.getId());
+        when(rendezVousRepository.findById("rdv-1")).thenReturn(Optional.of(rdv));
+        when(disponibiliteRepository.findByIdForUpdate("disp-2")).thenReturn(Optional.of(pris));
+
+        assertThatThrownBy(() -> rendezVousService.modifierCreneau("rdv-1",
+                new com.psyavocat.dto.rendezvous.ModifierCreneauRequest("disp-2")))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("n'est plus disponible");
+        verify(rendezVousRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("Annulation autorisée par le patient")
     void testAnnulerRendezVous_ParPatient_Succes() {
         RendezVous rdv = new RendezVous();
@@ -316,6 +428,7 @@ class RendezVousServiceTest {
 
         assertThat(dto.getStatut()).isEqualTo("ANNULE");
         verify(rendezVousRepository).save(rdv);
+        verify(evenements).rendezVousAnnule(rdv, patient.getId());
     }
 
     @Test
@@ -350,7 +463,7 @@ class RendezVousServiceTest {
 
         assertThatThrownBy(() -> rendezVousService.annulerRendezVous(rdv.getId()))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("pas autorisé à annuler");
+                .hasMessageContaining("pas accès à ce rendez-vous");
 
         verify(rendezVousRepository, never()).save(any());
     }

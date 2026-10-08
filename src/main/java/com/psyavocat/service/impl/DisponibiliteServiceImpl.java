@@ -10,6 +10,7 @@ import com.psyavocat.exception.ResourceNotFoundException;
 import com.psyavocat.repository.DisponibiliteRepository;
 import com.psyavocat.repository.ProfessionnelRepository;
 import com.psyavocat.security.AuthenticationContext;
+import com.psyavocat.realtime.RealtimeGateway;
 import com.psyavocat.service.DisponibiliteService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,15 +25,18 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
     private final DisponibiliteRepository disponibiliteRepository;
     private final ProfessionnelRepository professionnelRepository;
     private final AuthenticationContext authenticationContext;
+    private final RealtimeGateway realtimeGateway;
 
     public DisponibiliteServiceImpl(
             DisponibiliteRepository disponibiliteRepository,
             ProfessionnelRepository professionnelRepository,
-            AuthenticationContext authenticationContext
+            AuthenticationContext authenticationContext,
+            RealtimeGateway realtimeGateway
     ) {
         this.disponibiliteRepository = disponibiliteRepository;
         this.professionnelRepository = professionnelRepository;
         this.authenticationContext = authenticationContext;
+        this.realtimeGateway = realtimeGateway;
     }
 
     @Override
@@ -87,6 +91,7 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
         disponibilite.setProfessionnel(pro);
 
         Disponibilite saved = disponibiliteRepository.save(disponibilite);
+        signalerChangement(pro.getId());
         return toDto(saved);
     }
 
@@ -154,7 +159,9 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
             throw new BadRequestException("Aucun nouveau créneau à ajouter : tous les créneaux demandés existent déjà ou sont en conflit d'horaires.");
         }
 
-        return disponibiliteRepository.saveAll(toSave).stream().map(this::toDto).toList();
+        List<DisponibiliteResponseDTO> crees = disponibiliteRepository.saveAll(toSave).stream().map(this::toDto).toList();
+        signalerChangement(pro.getId());
+        return crees;
     }
 
     @Override
@@ -181,6 +188,7 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
         }
 
         disponibiliteRepository.delete(disp);
+        signalerChangement(uid);
     }
 
     @Override
@@ -204,6 +212,25 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
                 })
                 .map(this::toDto)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DisponibiliteResponseDTO> getCreneauxAVenir(String professionnelId) {
+        LocalDate today = LocalDate.now();
+        java.time.LocalTime now = java.time.LocalTime.now();
+
+        return disponibiliteRepository.findByProfessionnelIdAndDateGreaterThanEqualOrderByDateAscHeureDebutAsc(
+                        professionnelId, today).stream()
+                .filter(d -> "LIBRE".equalsIgnoreCase(d.getStatut()) || "RESERVE".equalsIgnoreCase(d.getStatut()))
+                .filter(d -> d.getDate().isAfter(today) || d.getHeureDebut().isAfter(now))
+                .map(this::toDto)
+                .toList();
+    }
+
+    /** Prévient les clients connectés que les créneaux de ce professionnel ont changé. */
+    private void signalerChangement(String professionnelId) {
+        realtimeGateway.diffuser("CRENEAUX_MIS_A_JOUR", java.util.Map.of("professionnelId", professionnelId));
     }
 
     private DisponibiliteResponseDTO toDto(Disponibilite d) {

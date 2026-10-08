@@ -5,12 +5,12 @@ import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
 import com.psyavocat.entity.Administrateur;
 import com.psyavocat.entity.Avocat;
+import com.psyavocat.entity.Client;
 import com.psyavocat.entity.Justiciable;
 import com.psyavocat.entity.Patient;
 import com.psyavocat.entity.Psychologue;
 import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.repository.UtilisateurRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,7 +26,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -47,10 +46,6 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private final ObjectProvider<FirebaseAuth> firebaseAuthProvider;
     private final UtilisateurRepository utilisateurRepository;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @org.springframework.beans.factory.annotation.Value("${firebase.project-id:psyavocat}")
-    private String expectedProjectId;
 
     public FirebaseAuthenticationFilter(
             ObjectProvider<FirebaseAuth> firebaseAuthProvider,
@@ -81,6 +76,16 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                     String email = decodedToken.getEmail();
 
                     Utilisateur utilisateur = utilisateurRepository.findById(firebaseUid).orElse(null);
+
+                    // Compte désactivé par l'administration : seul GET /me reste accessible
+                    // (pour que le client puisse afficher la raison du refus).
+                    if (utilisateur != null && Boolean.FALSE.equals(utilisateur.getActif())
+                            && !"/me".equals(request.getRequestURI())) {
+                        SecurityContextHolder.clearContext();
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
+
                     List<GrantedAuthority> authorities = determineAuthorities(utilisateur, decodedToken.getClaims());
 
                     AuthenticatedUser authenticatedUser = new AuthenticatedUser(
@@ -101,71 +106,19 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                     log.debug("Authentification Firebase réussie pour l'UID : {}", firebaseUid);
 
                 } catch (Exception e) {
-                    log.warn("⚠️ [Auth] Vérification standard Firebase Admin ({}) - tentative de secours via jeton JWT...", e.getMessage());
+                    // Échec sûr : un jeton non vérifié cryptographiquement n'authentifie JAMAIS.
+                    // (L'ancien « décodage de secours » sans vérification de signature permettait
+                    // de forger un jeton au nom de n'importe quel utilisateur, administrateur compris.)
+                    SecurityContextHolder.clearContext();
+                    log.warn("[Auth] Jeton Firebase refusé : {}", e.getMessage());
                 }
+            } else {
+                SecurityContextHolder.clearContext();
+                log.error("[Auth] Firebase Admin indisponible : aucune requête ne peut être authentifiée.");
             }
 
-            // Décodage de secours du jeton JWT Firebase (décalage d'horloge, nouvel enregistrement ou indisponibilité locale)
             if (!authenticated) {
-                try {
-                    String[] parts = bearerToken.split("\\.");
-                    if (parts.length >= 2) {
-                        byte[] decodedBytes = Base64.getUrlDecoder().decode(parts[1]);
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> payloadMap = objectMapper.readValue(decodedBytes, Map.class);
-
-                        String firebaseUid = (String) payloadMap.get("user_id");
-                        if (!StringUtils.hasText(firebaseUid)) {
-                            firebaseUid = (String) payloadMap.get("sub");
-                        }
-                        String email = (String) payloadMap.get("email");
-                        String aud = (String) payloadMap.get("aud");
-                        String iss = (String) payloadMap.get("iss");
-
-                        // Vérification de concordance avec le projet Firebase PsyAvocat
-                        boolean isPsyAvocatProject = (expectedProjectId != null && expectedProjectId.equalsIgnoreCase(aud))
-                                || (iss != null && expectedProjectId != null && iss.contains(expectedProjectId))
-                                || (iss != null && iss.startsWith("https://securetoken.google.com/"));
-
-                        // Vérification d'expiration avec tolérance d'horloge de 5 minutes
-                        boolean notExpired = true;
-                        Object expObj = payloadMap.get("exp");
-                        if (expObj instanceof Number expNum) {
-                            long expSeconds = expNum.longValue();
-                            long nowSeconds = java.time.Instant.now().getEpochSecond();
-                            if (nowSeconds - expSeconds > 300) {
-                                notExpired = false;
-                            }
-                        }
-
-                        if (StringUtils.hasText(firebaseUid) && isPsyAvocatProject && notExpired) {
-                            Utilisateur utilisateur = utilisateurRepository.findById(firebaseUid).orElse(null);
-                            List<GrantedAuthority> authorities = determineAuthorities(utilisateur, payloadMap);
-
-                            AuthenticatedUser authenticatedUser = new AuthenticatedUser(
-                                    firebaseUid,
-                                    email,
-                                    utilisateur,
-                                    authorities
-                            );
-
-                            FirebaseAuthenticationToken authentication = new FirebaseAuthenticationToken(
-                                    authenticatedUser,
-                                    bearerToken,
-                                    authorities
-                            );
-
-                            SecurityContextHolder.getContext().setAuthentication(authentication);
-                            log.info("✅ [Auth] Authentification réussie via jeton Firebase sécurisé pour UID : {}", firebaseUid);
-                        } else {
-                            SecurityContextHolder.clearContext();
-                            log.warn("⚠️ [Auth] Jeton Firebase non valide ou expiré pour UID : {} (aud={}, notExpired={})", firebaseUid, aud, notExpired);
-                        }
-                    }
-                } catch (Exception ex) {
-                    SecurityContextHolder.clearContext();
-                    log.error("Échec du décodage du jeton Firebase : {}", ex.getMessage());
-                }
+                SecurityContextHolder.clearContext();
             }
         }
 
@@ -188,7 +141,12 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         List<GrantedAuthority> authorities = new ArrayList<>();
 
         if (utilisateur != null) {
-            if (utilisateur instanceof Patient) {
+            if (utilisateur instanceof Client) {
+                // Profil client unifié : valable dans l'univers Psychologue ET Avocat.
+                authorities.add(new SimpleGrantedAuthority("ROLE_CLIENT"));
+                authorities.add(new SimpleGrantedAuthority("ROLE_PATIENT"));
+                authorities.add(new SimpleGrantedAuthority("ROLE_JUSTICIABLE"));
+            } else if (utilisateur instanceof Patient) {
                 authorities.add(new SimpleGrantedAuthority("ROLE_PATIENT"));
             } else if (utilisateur instanceof Justiciable) {
                 authorities.add(new SimpleGrantedAuthority("ROLE_JUSTICIABLE"));

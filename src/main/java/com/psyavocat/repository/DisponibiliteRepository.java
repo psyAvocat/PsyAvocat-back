@@ -31,4 +31,12 @@ public interface DisponibiliteRepository extends JpaRepository<Disponibilite, St
     );
 
     long countByProfessionnelId(String professionnelId);
+
+    /**
+     * Lecture avec verrou exclusif : deux réservations simultanées du même créneau
+     * sont sérialisées, la seconde voit le statut RESERVE et échoue proprement.
+     */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("SELECT d FROM Disponibilite d WHERE d.id = :id")
+    java.util.Optional<Disponibilite> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") String id);
 }

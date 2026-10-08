@@ -3,6 +3,7 @@ package com.psyavocat.controller;
 import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatDirectRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousPsyRequest;
+import com.psyavocat.dto.rendezvous.ModifierCreneauRequest;
 import com.psyavocat.dto.rendezvous.RendezVousResponseDTO;
 import com.psyavocat.service.RendezVousService;
 import jakarta.validation.Valid;
@@ -52,6 +53,19 @@ public class RendezVousController {
     @GetMapping
     public ResponseEntity<List<RendezVousResponseDTO>> getMyRendezVous() {
         return ResponseEntity.ok(rendezVousService.getMyRendezVous());
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<RendezVousResponseDTO> getRendezVous(@PathVariable String id) {
+        return ResponseEntity.ok(rendezVousService.getRendezVous(id));
+    }
+
+    @PatchMapping("/{id}/creneau")
+    public ResponseEntity<RendezVousResponseDTO> modifierCreneau(
+            @PathVariable String id,
+            @Valid @RequestBody ModifierCreneauRequest request
+    ) {
+        return ResponseEntity.ok(rendezVousService.modifierCreneau(id, request));
     }
 
     @PatchMapping("/{id}/annuler")

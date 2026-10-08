@@ -32,6 +32,7 @@ class AdminStatistiquesServiceImplTest {
     @Mock private PsychologueRepository psychologueRepository;
     @Mock private AvocatRepository avocatRepository;
     @Mock private AdministrateurRepository administrateurRepository;
+    @Mock private ClientRepository clientRepository;
 
     private AdminStatistiquesServiceImpl statsService;
     private Clock fixedClock;
@@ -51,6 +52,7 @@ class AdminStatistiquesServiceImplTest {
                 psychologueRepository,
                 avocatRepository,
                 administrateurRepository,
+                clientRepository,
                 fixedClock
         );
     }
@@ -58,7 +60,10 @@ class AdminStatistiquesServiceImplTest {
     @Test
     @DisplayName("getDashboardStats - Calcule les métriques réelles sans données fictives")
     void testGetDashboardStats() {
-        when(utilisateurRepository.count()).thenReturn(150L);
+        // « Utilisateurs » = clients uniquement (admin et professionnels exclus).
+        when(clientRepository.count()).thenReturn(100L);
+        when(patientRepository.count()).thenReturn(30L);
+        when(justiciableRepository.count()).thenReturn(20L);
         when(professionnelRepository.count()).thenReturn(30L);
         when(professionnelRepository.compterParStatutValidation()).thenReturn(List.of(
                 new Object[]{"APPROVED", 20L},

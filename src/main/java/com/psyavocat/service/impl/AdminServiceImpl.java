@@ -23,23 +23,27 @@ public class AdminServiceImpl implements AdminService {
     private final SignalementRepository signalementRepository;
     private final com.psyavocat.repository.PatientRepository patientRepository;
     private final com.psyavocat.repository.JusticiableRepository justiciableRepository;
+    private final com.psyavocat.repository.ClientRepository clientRepository;
 
     public AdminServiceImpl(UtilisateurRepository utilisateurRepository,
                             ProfessionnelRepository professionnelRepository,
                             SignalementRepository signalementRepository,
                             com.psyavocat.repository.PatientRepository patientRepository,
-                            com.psyavocat.repository.JusticiableRepository justiciableRepository) {
+                            com.psyavocat.repository.JusticiableRepository justiciableRepository,
+                            com.psyavocat.repository.ClientRepository clientRepository) {
         this.utilisateurRepository = utilisateurRepository;
         this.professionnelRepository = professionnelRepository;
         this.signalementRepository = signalementRepository;
         this.patientRepository = patientRepository;
         this.justiciableRepository = justiciableRepository;
+        this.clientRepository = clientRepository;
     }
 
     @Override
     public List<UtilisateurResponseDTO> getAllUtilisateurs() {
         // Règle 18 : uniquement les clients/patients (Patient et Justiciable). Jamais l'Admin ni les Pros.
         List<Utilisateur> clients = new ArrayList<>();
+        clients.addAll(clientRepository.findAll());
         clients.addAll(patientRepository.findAll());
         clients.addAll(justiciableRepository.findAll());
         return clients.stream()

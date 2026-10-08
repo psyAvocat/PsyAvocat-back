@@ -94,7 +94,7 @@ public class ProfessionnelEspaceServiceImpl implements ProfessionnelEspaceServic
             List<SoumissionDossier> soumissions = soumissionDossierRepository.findByAvocatIdOrderByDateSoumissionDesc(proId);
             for (SoumissionDossier s : soumissions) {
                 if (s.getDossier() == null) continue;
-                Justiciable j = s.getDossier().getJusticiable();
+                Utilisateur j = s.getDossier().getJusticiable();
                 if (j == null) continue;
 
                 ProfessionnelClientDTO dto = clientMap.computeIfAbsent(j.getId(), id -> ProfessionnelClientDTO.builder()
@@ -116,7 +116,7 @@ public class ProfessionnelEspaceServiceImpl implements ProfessionnelEspaceServic
         if (pro instanceof Psychologue) {
             List<FichePatient> fiches = fichePatientRepository.findByPsychologueIdOrderByDateCreationDesc(proId);
             for (FichePatient f : fiches) {
-                Patient p = f.getPatient();
+                Utilisateur p = f.getPatient();
                 if (p == null) continue;
 
                 ProfessionnelClientDTO dto = clientMap.computeIfAbsent(p.getId(), id -> ProfessionnelClientDTO.builder()

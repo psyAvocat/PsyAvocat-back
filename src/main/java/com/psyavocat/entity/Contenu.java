@@ -34,4 +34,18 @@ public class Contenu {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "auteur_id")
     private Utilisateur auteur;
+
+    /** Date de dernière modification par l'auteur. */
+    private LocalDateTime dateModification;
+
+    /** Catégorie : spécialité du référentiel, du même univers que l'auteur. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "specialite_id")
+    private Specialite specialite;
+
+    /** Image d'illustration (bucket R2 psyavocat-media). */
+    private String imageObjectKey;
+
+    /** Nombre de consultations du détail par des clients (sert au tri « Populaires »). */
+    private Long nombreVues = 0L;
 }

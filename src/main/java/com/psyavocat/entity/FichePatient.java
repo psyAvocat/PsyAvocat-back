@@ -21,9 +21,13 @@ public class FichePatient {
 
     private LocalDate dateCreation;
 
+    /**
+     * Client suivi : profil client unifié ({@link Client}) ou ancien {@link Patient}.
+     * Typé {@link Utilisateur} pour accepter les deux (voir ClientAccountMigration).
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "patient_id")
-    private Patient patient;
+    private Utilisateur patient;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "psychologue_id")

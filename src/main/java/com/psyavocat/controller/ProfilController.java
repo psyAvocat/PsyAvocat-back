@@ -22,6 +22,12 @@ public class ProfilController {
         return ResponseEntity.ok(profilService.getCurrentProfile());
     }
 
+    /** Profil client unique créé à l'inscription mobile (univers Avocat + Psychologue). */
+    @PostMapping("/client")
+    public ResponseEntity<UserProfileResponse> createClientProfile(@Valid @RequestBody CreateClientRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(profilService.createClientProfile(request));
+    }
+
     @PostMapping("/patient")
     public ResponseEntity<UserProfileResponse> createPatientProfile(@Valid @RequestBody CreatePatientRequest request) {
         UserProfileResponse response = profilService.createPatientProfile(request);

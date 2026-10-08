@@ -9,6 +9,16 @@ import java.util.List;
  */
 public interface ProfessionnelService {
 
+    /**
+     * Recherche publique : professionnels validés et actifs d'un type,
+     * avec recherche texte facultative (nom, prénom, ville, spécialité).
+     */
+    List<ProfessionnelResponseDTO> rechercherPublic(String type, String q, String ville,
+                                                    String specialiteId, String modeConsultation);
+
+    /** Fiche publique : 404 si le professionnel n'est pas validé ou plus actif. */
+    ProfessionnelResponseDTO getProfessionnelPublic(String id);
+
     List<ProfessionnelResponseDTO> searchProfessionnels(
             String type,
             String ville,

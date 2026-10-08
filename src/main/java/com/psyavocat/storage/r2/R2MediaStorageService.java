@@ -130,6 +130,26 @@ public class R2MediaStorageService implements ImageStorageService {
         }
     }
 
+    /** Durée de validité des URL d'affichage générées à la lecture. */
+    private static final Duration DUREE_URL_AFFICHAGE = Duration.ofHours(1);
+
+    @Override
+    public String getAccessUrl(String objectKey) {
+        if (s3Presigner == null || objectKey == null || objectKey.isBlank()) {
+            return null;
+        }
+        try {
+            GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                    .signatureDuration(DUREE_URL_AFFICHAGE)
+                    .getObjectRequest(GetObjectRequest.builder().bucket(mediaBucket).key(objectKey).build())
+                    .build();
+            return s3Presigner.presignGetObject(presignRequest).url().toString();
+        } catch (Exception e) {
+            log.warn("Impossible de générer l'URL d'accès de l'image {} : {}", objectKey, e.getMessage());
+            return null;
+        }
+    }
+
     private String genererUrlAcces(String objectKey) {
         if (s3Presigner != null) {
             try {

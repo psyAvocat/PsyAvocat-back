@@ -27,9 +27,10 @@ public class ProfessionnelController {
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String ville,
             @RequestParam(required = false) String specialiteId,
-            @RequestParam(required = false) String modeConsultation
+            @RequestParam(required = false) String modeConsultation,
+            @RequestParam(required = false) String q
     ) {
-        return ResponseEntity.ok(professionnelService.searchProfessionnels(type, ville, specialiteId, modeConsultation));
+        return ResponseEntity.ok(professionnelService.rechercherPublic(type, q, ville, specialiteId, modeConsultation));
     }
 
     @GetMapping("/clients")
@@ -46,6 +47,6 @@ public class ProfessionnelController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ProfessionnelResponseDTO> getProfessionnelById(@PathVariable String id) {
-        return ResponseEntity.ok(professionnelService.getProfessionnelById(id));
+        return ResponseEntity.ok(professionnelService.getProfessionnelPublic(id));
     }
 }
