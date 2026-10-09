@@ -15,7 +15,9 @@ import java.util.List;
 
 /**
  * Articles (avocats) et Conseils (psychologues).
- * Lecture : clients connectés. Gestion : auteur uniquement (vérifié dans le service).
+ * Lecture : comptes clients (application mobile), filtrée par type = univers
+ * (ARTICLE → Avocat, CONSEIL → Psychologue). Gestion : auteur uniquement.
+ * Toutes ces règles sont vérifiées dans ContenuServiceImpl.
  */
 @RestController
 @RequestMapping("/api/contenus")
@@ -67,6 +69,11 @@ public class ContenuController {
     public ResponseEntity<ContenuResponseDTO> televerserImage(@PathVariable String id,
                                                               @RequestParam("file") MultipartFile file) {
         return ResponseEntity.ok(contenuService.televerserImage(id, file));
+    }
+
+    @DeleteMapping("/{id}/image")
+    public ResponseEntity<ContenuResponseDTO> supprimerImage(@PathVariable String id) {
+        return ResponseEntity.ok(contenuService.supprimerImage(id));
     }
 
     @DeleteMapping("/{id}")
