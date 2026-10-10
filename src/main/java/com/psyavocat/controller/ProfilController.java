@@ -28,18 +28,6 @@ public class ProfilController {
         return ResponseEntity.status(HttpStatus.CREATED).body(profilService.createClientProfile(request));
     }
 
-    @PostMapping("/patient")
-    public ResponseEntity<UserProfileResponse> createPatientProfile(@Valid @RequestBody CreatePatientRequest request) {
-        UserProfileResponse response = profilService.createPatientProfile(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    @PostMapping("/justiciable")
-    public ResponseEntity<UserProfileResponse> createJusticiableProfile(@Valid @RequestBody CreateJusticiableRequest request) {
-        UserProfileResponse response = profilService.createJusticiableProfile(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
     @PostMapping("/avocat")
     public ResponseEntity<UserProfileResponse> createAvocatProfile(@Valid @RequestBody CreateAvocatRequest request) {
         UserProfileResponse response = profilService.createAvocatProfile(request);

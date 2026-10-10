@@ -153,6 +153,72 @@ class ContenuServiceImplTest {
     @Test
     @DisplayName("Type de liste invalide refusé")
     void typeInvalide() {
+        connecterClient();
         assertThatThrownBy(() -> service.rechercher("DOSSIER", null, null, null)).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("Un client consulte la liste des articles publiés")
+    void client_consulteLesArticles() {
+        connecterClient();
+        Contenu article = contenuPublie("contenu-1", avocatValide());
+        when(contenuRepository.rechercherPublies("ARTICLE", null, null)).thenReturn(java.util.List.of(article));
+
+        assertThat(service.rechercher("ARTICLE", null, null, "recent"))
+                .extracting(ContenuResponseDTO::getId)
+                .containsExactly("contenu-1");
+    }
+
+    @Test
+    @DisplayName("Un professionnel ne consulte pas la liste publique (réservée à l'app mobile)")
+    void professionnel_nePeutPasListerLesPublications() {
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("avocat-1");
+        when(utilisateurRepository.findById("avocat-1")).thenReturn(Optional.of(avocatValide()));
+
+        assertThatThrownBy(() -> service.rechercher("ARTICLE", null, null, null))
+                .isInstanceOf(ForbiddenException.class);
+        verify(contenuRepository, never()).rechercherPublies(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Un autre professionnel ne lit pas le détail d'une publication")
+    void autreProfessionnel_nePeutPasLireLeDetail() {
+        Contenu contenu = contenuPublie("contenu-1", avocatValide());
+        Psychologue psy = new Psychologue();
+        psy.setId("psy-1");
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("psy-1");
+        when(contenuRepository.findById("contenu-1")).thenReturn(Optional.of(contenu));
+        when(utilisateurRepository.findById("psy-1")).thenReturn(Optional.of(psy));
+
+        assertThatThrownBy(() -> service.getContenu("contenu-1")).isInstanceOf(ForbiddenException.class);
+        verify(contenuRepository, never()).incrementerVues(any());
+    }
+
+    @Test
+    @DisplayName("Un client lit le détail d'une publication et sa consultation est comptée")
+    void client_litLeDetail() {
+        connecterClient();
+        Contenu contenu = contenuPublie("contenu-1", avocatValide());
+        when(contenuRepository.findById("contenu-1")).thenReturn(Optional.of(contenu));
+
+        assertThat(service.getContenu("contenu-1").getId()).isEqualTo("contenu-1");
+        verify(contenuRepository).incrementerVues("contenu-1");
+    }
+
+    private void connecterClient() {
+        Client client = new Client();
+        client.setId("client-1");
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("client-1");
+        when(utilisateurRepository.findById("client-1")).thenReturn(Optional.of(client));
+    }
+
+    private Contenu contenuPublie(String id, Professionnel auteur) {
+        Contenu contenu = new Contenu();
+        contenu.setId(id);
+        contenu.setType("ARTICLE");
+        contenu.setTitre("Vos droits en cas de litige");
+        contenu.setActif(true);
+        contenu.setAuteur(auteur);
+        return contenu;
     }
 }

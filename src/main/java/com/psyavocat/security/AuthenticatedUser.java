@@ -20,17 +20,21 @@ public class AuthenticatedUser implements Serializable {
 
     private final String firebaseUid;
     private final String email;
+    /** Adresse e-mail confirmée auprès de Firebase (claim {@code email_verified} du jeton). */
+    private final boolean emailVerified;
     private final Utilisateur utilisateur;
     private final Collection<? extends GrantedAuthority> authorities;
 
     public AuthenticatedUser(
             String firebaseUid,
             String email,
+            boolean emailVerified,
             Utilisateur utilisateur,
             Collection<? extends GrantedAuthority> authorities
     ) {
         this.firebaseUid = firebaseUid;
         this.email = email;
+        this.emailVerified = emailVerified;
         this.utilisateur = utilisateur;
         this.authorities = authorities != null ? authorities : Collections.emptyList();
     }

@@ -33,5 +33,8 @@ public interface ContenuService {
 
     ContenuResponseDTO televerserImage(String id, MultipartFile image);
 
+    /** Retire l'image d'illustration (objet R2 supprimé, référence effacée). Auteur uniquement. */
+    ContenuResponseDTO supprimerImage(String id);
+
     void supprimer(String id);
 }

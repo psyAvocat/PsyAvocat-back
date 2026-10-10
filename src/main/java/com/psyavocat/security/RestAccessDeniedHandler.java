@@ -27,13 +27,31 @@ public class RestAccessDeniedHandler implements AccessDeniedHandler {
             HttpServletResponse response,
             AccessDeniedException accessDeniedException
     ) throws IOException {
+        writeForbidden(request, response, null,
+                "Accès refusé : privilèges insuffisants pour exécuter cette opération.");
+    }
+
+    /**
+     * Écrit une réponse 403 JSON. Le {@code code} (facultatif) permet aux clients
+     * de distinguer un refus de compte (ex. {@code ACCOUNT_DISABLED}) d'un manque de droits.
+     */
+    public void writeForbidden(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            String code,
+            String message
+    ) throws IOException {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
 
         Map<String, Object> body = new HashMap<>();
         body.put("status", HttpServletResponse.SC_FORBIDDEN);
         body.put("error", "Forbidden");
-        body.put("message", "Accès refusé : privilèges insuffisants pour exécuter cette opération.");
+        if (code != null) {
+            body.put("code", code);
+        }
+        body.put("message", message);
         body.put("path", request.getRequestURI());
         body.put("timestamp", Instant.now().toString());
 

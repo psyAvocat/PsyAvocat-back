@@ -41,10 +41,13 @@ public class AuthController {
         response.put("authenticated", true);
         response.put("firebaseUid", user.getFirebaseUid());
         response.put("email", user.getEmail());
+        // Les clients doivent confirmer leur adresse avant d'accéder à l'API (voir FirebaseAuthenticationFilter).
+        response.put("emailVerified", user.isEmailVerified());
         response.put("userId", user.getUtilisateur() != null ? user.getUtilisateur().getId() : null);
         response.put("hasMetierProfile", user.hasMetierProfile());
         response.put("nom", user.getNom());
         response.put("prenom", user.getPrenom());
+        response.put("telephone", user.getUtilisateur() != null ? user.getUtilisateur().getTelephone() : null);
         response.put("roles", roles);
         // Compte désactivé par l'administration (rétrocompatible : nouveau champ).
         response.put("actif", user.getUtilisateur() == null

@@ -4,6 +4,7 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
 import com.psyavocat.entity.Avocat;
+import com.psyavocat.entity.Client;
 import com.psyavocat.repository.UtilisateurRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.time.LocalDate;
 import java.util.Collections;
+import java.util.Map;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -127,6 +129,17 @@ class SecurityAndAuthControllerTest {
     }
 
     @Test
+    @DisplayName("CORS - Flutter Web sur un port local quelconque autorisé")
+    void testCorsPreflightForFlutterWebRandomPort() throws Exception {
+        mockMvc.perform(options("/api/profil")
+                        .header("Origin", "http://localhost:53712")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "Authorization"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:53712"));
+    }
+
+    @Test
     @DisplayName("CORS - Requête preflight rejetée pour origine non autorisée")
     void testCorsPreflightRejectedForUntrustedOrigin() throws Exception {
         mockMvc.perform(options("/me")
@@ -155,6 +168,81 @@ class SecurityAndAuthControllerTest {
                 .andExpect(jsonPath("$.status").value(403))
                 .andExpect(jsonPath("$.error").value("Forbidden"))
                 .andExpect(jsonPath("$.message").value("Accès refusé : privilèges insuffisants pour exécuter cette opération."));
+    }
+
+    @Test
+    @DisplayName("Compte désactivé - 403 ACCOUNT_DISABLED sur l'API, /me reste accessible")
+    void testDisabledAccount() throws Exception {
+        String token = "token-client-desactive";
+        Client client = saveClient("uid-client-desactive", "desactive@psyavocat.fr");
+        client.setActif(false);
+        utilisateurRepository.save(client);
+        mockToken(token, client.getId(), client.getEmail(), true, Collections.emptyMap());
+
+        mockMvc.perform(get("/api/profil").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(FirebaseAuthenticationFilter.CODE_ACCOUNT_DISABLED));
+
+        mockMvc.perform(get("/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.actif").value(false));
+    }
+
+    @Test
+    @DisplayName("Client à l'e-mail non vérifié - 403 EMAIL_NOT_VERIFIED, /me indique emailVerified=false")
+    void testClientWithUnverifiedEmail() throws Exception {
+        String token = "token-client-non-verifie";
+        Client client = saveClient("uid-client-non-verifie", "nonverifie@psyavocat.fr");
+        mockToken(token, client.getId(), client.getEmail(), false, Collections.emptyMap());
+
+        mockMvc.perform(get("/api/profil").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(FirebaseAuthenticationFilter.CODE_EMAIL_NOT_VERIFIED));
+
+        mockMvc.perform(get("/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.emailVerified").value(false));
+    }
+
+    @Test
+    @DisplayName("Client à l'e-mail vérifié - accès normal à l'API")
+    void testClientWithVerifiedEmail() throws Exception {
+        String token = "token-client-verifie";
+        Client client = saveClient("uid-client-verifie", "verifie@psyavocat.fr");
+        mockToken(token, client.getId(), client.getEmail(), true, Collections.emptyMap());
+
+        mockMvc.perform(get("/api/profil").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Custom claim Firebase 'role' ignoré : les rôles viennent uniquement de MySQL")
+    void testRoleClaimIsIgnored() throws Exception {
+        String token = "token-claim-admin";
+        mockToken(token, "uid-sans-profil-claim", "claim@psyavocat.fr", true, Map.of("role", "ADMINISTRATEUR"));
+
+        mockMvc.perform(get("/admin/test-privilege").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    private Client saveClient(String uid, String email) {
+        Client client = new Client();
+        client.setId(uid);
+        client.setEmail(email);
+        client.setNom("Diarra");
+        client.setPrenom("Ramla");
+        client.setDateInscription(LocalDate.now());
+        return utilisateurRepository.save(client);
+    }
+
+    private void mockToken(String token, String uid, String email, boolean emailVerified,
+                           Map<String, Object> claims) throws FirebaseAuthException {
+        FirebaseToken mockToken = mock(FirebaseToken.class);
+        when(mockToken.getUid()).thenReturn(uid);
+        when(mockToken.getEmail()).thenReturn(email);
+        when(mockToken.isEmailVerified()).thenReturn(emailVerified);
+        when(mockToken.getClaims()).thenReturn(claims);
+        when(firebaseAuth.verifyIdToken(token)).thenReturn(mockToken);
     }
 
     /**

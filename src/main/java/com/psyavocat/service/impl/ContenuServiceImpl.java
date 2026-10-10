@@ -63,6 +63,9 @@ public class ContenuServiceImpl implements ContenuService {
     @Override
     @Transactional(readOnly = true)
     public List<ContenuResponseDTO> rechercher(String type, String q, String specialiteId, String tri) {
+        // Les publications sont destinées aux clients (application mobile).
+        // Les professionnels gèrent les leurs via /mes-contenus.
+        exigerClient();
         String typeNormalise = typeValide(type);
         String texte = q != null && !q.isBlank() ? q.trim() : null;
         String specialite = specialiteId != null && !specialiteId.isBlank() ? specialiteId : null;
@@ -91,7 +94,14 @@ public class ContenuServiceImpl implements ContenuService {
             throw new ResourceNotFoundException("Cette ressource n'est plus disponible.");
         }
 
-        if (!estAuteur && ClientAccounts.isClient(utilisateurRepository.findById(uid).orElse(null))) {
+        Utilisateur lecteur = utilisateurRepository.findById(uid).orElse(null);
+        boolean estClient = ClientAccounts.isClient(lecteur);
+        // Lecture : clients, auteur (édition) ou administrateur (modération).
+        if (!estAuteur && !estClient && !(lecteur instanceof Administrateur)) {
+            throw new ForbiddenException("Les publications sont consultables depuis l'application mobile.");
+        }
+
+        if (!estAuteur && estClient) {
             contenuRepository.incrementerVues(id);
         }
         return toDto(contenu, true);
@@ -167,6 +177,22 @@ public class ContenuServiceImpl implements ContenuService {
     }
 
     @Override
+    public ContenuResponseDTO supprimerImage(String id) {
+        Professionnel auteur = auteurAutorise();
+        Contenu contenu = contenuDeLAuteur(id, auteur);
+        if (contenu.getImageObjectKey() == null) {
+            return toDto(contenu, true);
+        }
+        imageStorageService.deleteImage(contenu.getImageObjectKey());
+        contenu.setImageObjectKey(null);
+        contenu.setDateModification(LocalDateTime.now());
+
+        Contenu saved = contenuRepository.save(contenu);
+        signaler(saved, "MODIFIE");
+        return toDto(saved, true);
+    }
+
+    @Override
     public void supprimer(String id) {
         String uid = authenticationContext.getRequiredFirebaseUid();
         Utilisateur utilisateur = utilisateurRepository.findById(uid)
@@ -202,6 +228,15 @@ public class ContenuServiceImpl implements ContenuService {
             throw new ForbiddenException("Votre compte doit être validé pour publier");
         }
         return pro;
+    }
+
+    /** Seuls les comptes clients (patient / justiciable) consultent les listes publiques. */
+    private void exigerClient() {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Utilisateur utilisateur = utilisateurRepository.findById(uid).orElse(null);
+        if (!ClientAccounts.isClient(utilisateur)) {
+            throw new ForbiddenException("Les publications sont consultables depuis l'application mobile.");
+        }
     }
 
     private Contenu contenuDeLAuteur(String id, Professionnel auteur) {

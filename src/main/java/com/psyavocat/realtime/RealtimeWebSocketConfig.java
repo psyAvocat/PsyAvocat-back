@@ -29,9 +29,9 @@ public class RealtimeWebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         // Les applications mobiles n'envoient pas d'en-tête Origin ; les navigateurs
-        // sont limités aux origines CORS autorisées.
+        // sont limités aux motifs d'origine CORS autorisés.
         registry.addHandler(handler, "/ws")
                 .addInterceptors(handshakeInterceptor)
-                .setAllowedOrigins(allowedOrigins);
+                .setAllowedOriginPatterns(allowedOrigins);
     }
 }

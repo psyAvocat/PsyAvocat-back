@@ -11,6 +11,11 @@ import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.ProfilService;
 import com.psyavocat.service.support.ClientAccounts;
 import com.psyavocat.service.support.PhoneNumbers;
+import com.google.firebase.auth.AuthErrorCode;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.UserRecord;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,8 +28,6 @@ public class ProfilServiceImpl implements ProfilService {
 
     private final AuthenticationContext authenticationContext;
     private final UtilisateurRepository utilisateurRepository;
-    private final PatientRepository patientRepository;
-    private final JusticiableRepository justiciableRepository;
     private final AvocatRepository avocatRepository;
     private final PsychologueRepository psychologueRepository;
     private final SpecialiteRepository specialiteRepository;
@@ -33,12 +36,11 @@ public class ProfilServiceImpl implements ProfilService {
     private final AdministrateurRepository administrateurRepository;
     private final com.psyavocat.service.NotificationService notificationService;
     private final ClientRepository clientRepository;
+    private final ObjectProvider<FirebaseAuth> firebaseAuthProvider;
 
     public ProfilServiceImpl(
             AuthenticationContext authenticationContext,
             UtilisateurRepository utilisateurRepository,
-            PatientRepository patientRepository,
-            JusticiableRepository justiciableRepository,
             AvocatRepository avocatRepository,
             PsychologueRepository psychologueRepository,
             SpecialiteRepository specialiteRepository,
@@ -46,12 +48,11 @@ public class ProfilServiceImpl implements ProfilService {
             com.psyavocat.storage.service.ImageStorageService imageStorageService,
             AdministrateurRepository administrateurRepository,
             com.psyavocat.service.NotificationService notificationService,
-            ClientRepository clientRepository
+            ClientRepository clientRepository,
+            ObjectProvider<FirebaseAuth> firebaseAuthProvider
     ) {
         this.authenticationContext = authenticationContext;
         this.utilisateurRepository = utilisateurRepository;
-        this.patientRepository = patientRepository;
-        this.justiciableRepository = justiciableRepository;
         this.avocatRepository = avocatRepository;
         this.psychologueRepository = psychologueRepository;
         this.specialiteRepository = specialiteRepository;
@@ -60,6 +61,7 @@ public class ProfilServiceImpl implements ProfilService {
         this.administrateurRepository = administrateurRepository;
         this.notificationService = notificationService;
         this.clientRepository = clientRepository;
+        this.firebaseAuthProvider = firebaseAuthProvider;
     }
 
     @Override
@@ -85,40 +87,6 @@ public class ProfilServiceImpl implements ProfilService {
         client.setDateInscription(LocalDate.now());
 
         Client saved = clientRepository.save(client);
-        return userMapper.toProfileResponse(saved);
-    }
-
-    @Override
-    public UserProfileResponse createPatientProfile(CreatePatientRequest request) {
-        AuthenticatedUser authUser = getAuthenticatedUserOrThrow();
-        checkIfProfileAlreadyExists(authUser.getFirebaseUid());
-
-        Patient patient = new Patient();
-        patient.setId(authUser.getFirebaseUid());
-        patient.setEmail(authUser.getEmail());
-        patient.setNom(request.getNom());
-        patient.setPrenom(request.getPrenom());
-        patient.setTelephone(validerTelephone(request.getTelephone(), authUser.getFirebaseUid(), false));
-        patient.setDateInscription(LocalDate.now());
-
-        Patient saved = patientRepository.save(patient);
-        return userMapper.toProfileResponse(saved);
-    }
-
-    @Override
-    public UserProfileResponse createJusticiableProfile(CreateJusticiableRequest request) {
-        AuthenticatedUser authUser = getAuthenticatedUserOrThrow();
-        checkIfProfileAlreadyExists(authUser.getFirebaseUid());
-
-        Justiciable justiciable = new Justiciable();
-        justiciable.setId(authUser.getFirebaseUid());
-        justiciable.setEmail(authUser.getEmail());
-        justiciable.setNom(request.getNom());
-        justiciable.setPrenom(request.getPrenom());
-        justiciable.setTelephone(validerTelephone(request.getTelephone(), authUser.getFirebaseUid(), false));
-        justiciable.setDateInscription(LocalDate.now());
-
-        Justiciable saved = justiciableRepository.save(justiciable);
         return userMapper.toProfileResponse(saved);
     }
 
@@ -274,6 +242,7 @@ public class ProfilServiceImpl implements ProfilService {
         Utilisateur utilisateur = utilisateurRepository.findById(uid)
                 .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
 
+        String nouvelEmailFirebase = null;
         if (utilisateur instanceof Professionnel pro) {
             // Règle de conformité : Les professionnels ne peuvent modifier QUE leur numéro, adresse et email
             if (request.getTelephone() != null) {
@@ -292,6 +261,7 @@ public class ProfilServiceImpl implements ProfilService {
                         throw new ConflictException("Cette adresse e-mail est déjà associée à un autre compte.");
                     }
                     utilisateur.setEmail(newEmail);
+                    nouvelEmailFirebase = newEmail;
                 }
             }
             // Nom, prénom, numéro de barreau / agrément sont certifiés par l'administration et verrouillés
@@ -304,7 +274,8 @@ public class ProfilServiceImpl implements ProfilService {
                 utilisateur.setPrenom(validerTexteObligatoire(request.getPrenom(), "Le prénom"));
             }
             if (request.getTelephone() != null) {
-                utilisateur.setTelephone(validerTelephone(request.getTelephone(), uid, false));
+                // Même règle qu'à l'inscription : le téléphone d'un client est obligatoire.
+                utilisateur.setTelephone(validerTelephone(request.getTelephone(), uid, true));
             }
             // L'email est l'identifiant de connexion Firebase : le modifier ici
             // désynchroniserait MySQL et Firebase. Il n'est donc pas modifiable.
@@ -315,8 +286,33 @@ public class ProfilServiceImpl implements ProfilService {
             }
         }
 
-        Utilisateur saved = utilisateurRepository.save(utilisateur);
+        Utilisateur saved = utilisateurRepository.saveAndFlush(utilisateur);
+        if (nouvelEmailFirebase != null) {
+            // Après l'écriture MySQL : un échec Firebase lève une exception et annule la transaction.
+            synchroniserEmailFirebase(uid, nouvelEmailFirebase);
+        }
         return userMapper.toProfileResponse(saved);
+    }
+
+    /**
+     * L'e-mail est l'identifiant de connexion Firebase : il est modifié dans Firebase
+     * en même temps que dans MySQL, sinon les deux divergent.
+     */
+    private void synchroniserEmailFirebase(String uid, String email) {
+        FirebaseAuth firebaseAuth = firebaseAuthProvider.getIfAvailable();
+        if (firebaseAuth == null) {
+            throw new IllegalStateException(
+                    "Service d'authentification indisponible : l'adresse e-mail ne peut pas être modifiée pour le moment.");
+        }
+        try {
+            firebaseAuth.updateUser(new UserRecord.UpdateRequest(uid).setEmail(email));
+        } catch (FirebaseAuthException e) {
+            if (e.getAuthErrorCode() == AuthErrorCode.EMAIL_ALREADY_EXISTS) {
+                throw new ConflictException("Cette adresse e-mail est déjà associée à un autre compte.");
+            }
+            throw new IllegalStateException(
+                    "L'adresse e-mail n'a pas pu être modifiée. Vérifiez sa validité et réessayez.");
+        }
     }
 
     @Override
