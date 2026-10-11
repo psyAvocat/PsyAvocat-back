@@ -119,6 +119,12 @@ public class GlobalExceptionHandler {
         return reponse(HttpStatus.NOT_FOUND, "Ressource introuvable.", request);
     }
 
+    /** Fichier au-delà de spring.servlet.multipart.max-file-size : message lisible, pas une erreur 500. */
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleFichierTropVolumineux(Exception ex, HttpServletRequest request) {
+        return reponse(HttpStatus.CONTENT_TOO_LARGE, "Fichier trop volumineux : 5 Mo maximum pour une image, 10 Mo pour un document.", request);
+    }
+
     @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ApiErrorResponse> handleMethodeNonSupportee(Exception ex, HttpServletRequest request) {
         return reponse(HttpStatus.METHOD_NOT_ALLOWED, "Méthode non autorisée pour cette ressource.", request);

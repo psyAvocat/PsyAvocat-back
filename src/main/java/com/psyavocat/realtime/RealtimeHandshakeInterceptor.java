@@ -4,7 +4,6 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.repository.UtilisateurRepository;
-import com.psyavocat.service.support.ClientAccounts;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
@@ -54,9 +53,8 @@ public class RealtimeHandshakeInterceptor implements HandshakeInterceptor {
         try {
             FirebaseToken decoded = firebaseAuth.verifyIdToken(token);
             Utilisateur utilisateur = utilisateurRepository.findById(decoded.getUid()).orElse(null);
-            // Mêmes règles que l'API REST : compte désactivé ou client à l'e-mail non vérifié refusés.
-            if (utilisateur == null || Boolean.FALSE.equals(utilisateur.getActif())
-                    || (ClientAccounts.isClient(utilisateur) && !decoded.isEmailVerified())) {
+            // Mêmes règles que l'API REST : compte inconnu ou désactivé refusé.
+            if (utilisateur == null || Boolean.FALSE.equals(utilisateur.getActif())) {
                 response.setStatusCode(HttpStatus.FORBIDDEN);
                 return false;
             }

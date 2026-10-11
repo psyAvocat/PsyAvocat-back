@@ -127,7 +127,7 @@ class ContenuServiceImplTest {
         contenu.setId("contenu-1");
         contenu.setActif(false);
         contenu.setAuteur(avocatValide());
-        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("client-1");
+        when(authenticationContext.getFirebaseUid()).thenReturn(Optional.of("client-1"));
         when(contenuRepository.findById("contenu-1")).thenReturn(Optional.of(contenu));
 
         assertThatThrownBy(() -> service.getContenu("contenu-1"))
@@ -172,7 +172,7 @@ class ContenuServiceImplTest {
     @Test
     @DisplayName("Un professionnel ne consulte pas la liste publique (réservée à l'app mobile)")
     void professionnel_nePeutPasListerLesPublications() {
-        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("avocat-1");
+        when(authenticationContext.getFirebaseUid()).thenReturn(Optional.of("avocat-1"));
         when(utilisateurRepository.findById("avocat-1")).thenReturn(Optional.of(avocatValide()));
 
         assertThatThrownBy(() -> service.rechercher("ARTICLE", null, null, null))
@@ -186,7 +186,7 @@ class ContenuServiceImplTest {
         Contenu contenu = contenuPublie("contenu-1", avocatValide());
         Psychologue psy = new Psychologue();
         psy.setId("psy-1");
-        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("psy-1");
+        when(authenticationContext.getFirebaseUid()).thenReturn(Optional.of("psy-1"));
         when(contenuRepository.findById("contenu-1")).thenReturn(Optional.of(contenu));
         when(utilisateurRepository.findById("psy-1")).thenReturn(Optional.of(psy));
 
@@ -205,10 +205,24 @@ class ContenuServiceImplTest {
         verify(contenuRepository).incrementerVues("contenu-1");
     }
 
+    @Test
+    @DisplayName("Un visiteur non connecté (mode invité) lit les publications publiées")
+    void visiteur_litLesPublications() {
+        Contenu contenu = contenuPublie("contenu-1", avocatValide());
+        when(contenuRepository.rechercherPublies("ARTICLE", null, null)).thenReturn(java.util.List.of(contenu));
+        when(contenuRepository.findById("contenu-1")).thenReturn(Optional.of(contenu));
+
+        assertThat(service.rechercher("ARTICLE", null, null, "recent"))
+                .extracting(ContenuResponseDTO::getId)
+                .containsExactly("contenu-1");
+        assertThat(service.getContenu("contenu-1").getId()).isEqualTo("contenu-1");
+        verify(utilisateurRepository, never()).findById(any());
+    }
+
     private void connecterClient() {
         Client client = new Client();
         client.setId("client-1");
-        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("client-1");
+        when(authenticationContext.getFirebaseUid()).thenReturn(Optional.of("client-1"));
         when(utilisateurRepository.findById("client-1")).thenReturn(Optional.of(client));
     }
 

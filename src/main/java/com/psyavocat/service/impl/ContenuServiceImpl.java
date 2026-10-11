@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import com.psyavocat.service.support.Entites;
 
 @Service
 @Transactional
@@ -65,7 +66,7 @@ public class ContenuServiceImpl implements ContenuService {
     public List<ContenuResponseDTO> rechercher(String type, String q, String specialiteId, String tri) {
         // Les publications sont destinées aux clients (application mobile).
         // Les professionnels gèrent les leurs via /mes-contenus.
-        exigerClient();
+        exigerLecteurPublic();
         String typeNormalise = typeValide(type);
         String texte = q != null && !q.isBlank() ? q.trim() : null;
         String specialite = specialiteId != null && !specialiteId.isBlank() ? specialiteId : null;
@@ -83,25 +84,26 @@ public class ContenuServiceImpl implements ContenuService {
 
     @Override
     public ContenuResponseDTO getContenu(String id) {
-        String uid = authenticationContext.getRequiredFirebaseUid();
+        // Visiteur non connecté (mode invité) : uid absent, lecture des seuls contenus publiés.
+        String uid = authenticationContext.getFirebaseUid().orElse(null);
         Contenu contenu = contenuRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cette ressource n'est plus disponible."));
 
-        boolean estAuteur = contenu.getAuteur() != null && uid.equals(contenu.getAuteur().getId());
+        boolean estAuteur = uid != null && contenu.getAuteur() != null && uid.equals(contenu.getAuteur().getId());
         boolean publie = Boolean.TRUE.equals(contenu.getActif()) && auteurPublieValide(contenu.getAuteur());
         if (!estAuteur && !publie) {
             // Un contenu désactivé ou dont l'auteur n'est plus valide n'est jamais servi.
             throw new ResourceNotFoundException("Cette ressource n'est plus disponible.");
         }
 
-        Utilisateur lecteur = utilisateurRepository.findById(uid).orElse(null);
-        boolean estClient = ClientAccounts.isClient(lecteur);
-        // Lecture : clients, auteur (édition) ou administrateur (modération).
-        if (!estAuteur && !estClient && !(lecteur instanceof Administrateur)) {
+        Utilisateur lecteur = uid != null ? utilisateurRepository.findById(uid).orElse(null) : null;
+        boolean estLecteurPublic = lecteur == null || ClientAccounts.isClient(lecteur);
+        // Lecture : visiteurs et clients, auteur (édition) ou administrateur (modération).
+        if (!estAuteur && !estLecteurPublic && !(lecteur instanceof Administrateur)) {
             throw new ForbiddenException("Les publications sont consultables depuis l'application mobile.");
         }
 
-        if (!estAuteur && estClient) {
+        if (!estAuteur && estLecteurPublic) {
             contenuRepository.incrementerVues(id);
         }
         return toDto(contenu, true);
@@ -231,10 +233,18 @@ public class ContenuServiceImpl implements ContenuService {
     }
 
     /** Seuls les comptes clients (patient / justiciable) consultent les listes publiques. */
-    private void exigerClient() {
-        String uid = authenticationContext.getRequiredFirebaseUid();
+    /**
+     * Lecture publique : visiteurs non connectés (mode invité de l'application mobile)
+     * et clients. Un compte professionnel ou administrateur connecté gère ses
+     * publications depuis son espace (/mes-contenus).
+     */
+    private void exigerLecteurPublic() {
+        String uid = authenticationContext.getFirebaseUid().orElse(null);
+        if (uid == null) {
+            return;
+        }
         Utilisateur utilisateur = utilisateurRepository.findById(uid).orElse(null);
-        if (!ClientAccounts.isClient(utilisateur)) {
+        if (utilisateur != null && !ClientAccounts.isClient(utilisateur)) {
             throw new ForbiddenException("Les publications sont consultables depuis l'application mobile.");
         }
     }
@@ -272,13 +282,13 @@ public class ContenuServiceImpl implements ContenuService {
     }
 
     private boolean auteurPublieValide(Utilisateur auteur) {
-        return auteur instanceof Professionnel pro
+        return Entites.reel(auteur) instanceof Professionnel pro
                 && !Boolean.FALSE.equals(pro.getActif())
                 && "APPROVED".equalsIgnoreCase(pro.getStatutValidation());
     }
 
     private String typeDeLAuteur(Professionnel auteur) {
-        return auteur instanceof Avocat ? TYPE_ARTICLE : TYPE_CONSEIL;
+        return Entites.reel(auteur) instanceof Avocat ? TYPE_ARTICLE : TYPE_CONSEIL;
     }
 
     private String typeValide(String type) {
@@ -299,7 +309,7 @@ public class ContenuServiceImpl implements ContenuService {
     }
 
     private ContenuResponseDTO toDto(Contenu c, boolean avecTexte) {
-        Utilisateur auteur = c.getAuteur();
+        Utilisateur auteur = Entites.reel(c.getAuteur());
         return ContenuResponseDTO.builder()
                 .id(c.getId())
                 .type(c.getType())

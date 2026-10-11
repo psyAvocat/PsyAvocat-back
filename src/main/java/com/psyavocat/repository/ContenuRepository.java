@@ -16,9 +16,12 @@ public interface ContenuRepository extends JpaRepository<Contenu, String> {
      * Contenus publiés d'un type : actifs, auteur actif et validé.
      * Filtres facultatifs : texte (titre / description) et spécialité.
      */
-    @Query("SELECT c FROM Contenu c JOIN c.auteur a WHERE c.type = :type AND c.actif = true "
+    // Une seule requête : auteur et spécialité chargés avec le contenu (pas de N+1),
+    // jointure externe sur la spécialité (facultative) pour ne pas exclure les contenus sans catégorie.
+    @Query("SELECT c FROM Contenu c JOIN FETCH c.auteur a LEFT JOIN FETCH c.specialite s "
+            + "WHERE c.type = :type AND c.actif = true "
             + "AND a.actif = true AND TYPE(a) IN (Avocat, Psychologue) "
-            + "AND (:specialiteId IS NULL OR c.specialite.id = :specialiteId) "
+            + "AND (:specialiteId IS NULL OR s.id = :specialiteId) "
             + "AND (:q IS NULL OR LOWER(c.titre) LIKE LOWER(CONCAT('%', :q, '%')) "
             + "     OR LOWER(c.description) LIKE LOWER(CONCAT('%', :q, '%')))")
     List<Contenu> rechercherPublies(@Param("type") String type,

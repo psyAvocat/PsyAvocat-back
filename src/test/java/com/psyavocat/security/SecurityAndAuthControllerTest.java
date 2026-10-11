@@ -189,15 +189,14 @@ class SecurityAndAuthControllerTest {
     }
 
     @Test
-    @DisplayName("Client à l'e-mail non vérifié - 403 EMAIL_NOT_VERIFIED, /me indique emailVerified=false")
+    @DisplayName("Client à l'e-mail non vérifié - accès immédiat après l'inscription")
     void testClientWithUnverifiedEmail() throws Exception {
         String token = "token-client-non-verifie";
         Client client = saveClient("uid-client-non-verifie", "nonverifie@psyavocat.fr");
         mockToken(token, client.getId(), client.getEmail(), false, Collections.emptyMap());
 
         mockMvc.perform(get("/api/profil").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(FirebaseAuthenticationFilter.CODE_EMAIL_NOT_VERIFIED));
+                .andExpect(status().isOk());
 
         mockMvc.perform(get("/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())

@@ -42,8 +42,8 @@ public class AccesProfessionnel {
     /** Professionnel connecté, quel que soit son statut ; 403 pour tout autre compte. */
     public Professionnel professionnelConnecte() {
         String uid = authenticationContext.getRequiredFirebaseUid();
-        Utilisateur utilisateur = utilisateurRepository.findById(uid)
-                .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
+        Utilisateur utilisateur = Entites.reel(utilisateurRepository.findById(uid)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable")));
         if (!(utilisateur instanceof Professionnel pro)) {
             throw new ForbiddenException("Cet espace est réservé aux professionnels (avocats et psychologues).");
         }

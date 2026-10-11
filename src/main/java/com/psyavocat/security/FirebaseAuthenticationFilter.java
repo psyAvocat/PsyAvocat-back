@@ -10,7 +10,6 @@ import com.psyavocat.entity.Patient;
 import com.psyavocat.entity.Psychologue;
 import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.repository.UtilisateurRepository;
-import com.psyavocat.service.support.ClientAccounts;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -84,17 +83,13 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                 Utilisateur utilisateur = utilisateurRepository.findById(firebaseUid).orElse(null);
                 boolean emailVerified = decodedToken.isEmailVerified();
 
-                if (utilisateur != null && !isSessionEndpoint(request)) {
-                    if (Boolean.FALSE.equals(utilisateur.getActif())) {
-                        accessDeniedHandler.writeForbidden(request, response, CODE_ACCOUNT_DISABLED,
-                                "Votre compte a été désactivé. Contactez le support PsyAvocat.");
-                        return;
-                    }
-                    if (ClientAccounts.isClient(utilisateur) && !emailVerified) {
-                        accessDeniedHandler.writeForbidden(request, response, CODE_EMAIL_NOT_VERIFIED,
-                                "Veuillez confirmer votre adresse e-mail pour accéder à PsyAvocat.");
-                        return;
-                    }
+                // Un utilisateur de l'application mobile accède à PsyAvocat dès son inscription :
+                // la confirmation de l'adresse e-mail n'est plus exigée.
+                if (utilisateur != null && !isSessionEndpoint(request)
+                        && Boolean.FALSE.equals(utilisateur.getActif())) {
+                    accessDeniedHandler.writeForbidden(request, response, CODE_ACCOUNT_DISABLED,
+                            "Votre compte a été désactivé. Contactez le support PsyAvocat.");
+                    return;
                 }
 
                 List<GrantedAuthority> authorities = determineAuthorities(utilisateur);

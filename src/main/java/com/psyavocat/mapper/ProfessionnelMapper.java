@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
+import com.psyavocat.service.support.Entites;
 
 @Component
 public class ProfessionnelMapper {
@@ -21,6 +22,7 @@ public class ProfessionnelMapper {
     }
 
     public ProfessionnelResponseDTO toDto(Professionnel pro) {
+        pro = Entites.reel(pro);
         if (pro == null) {
             return null;
         }

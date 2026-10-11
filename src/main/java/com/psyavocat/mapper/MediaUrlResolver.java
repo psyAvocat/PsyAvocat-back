@@ -6,6 +6,7 @@ import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.service.support.ClientAccounts;
 import com.psyavocat.storage.service.ImageStorageService;
 import org.springframework.stereotype.Component;
+import com.psyavocat.service.support.Entites;
 
 /**
  * Calcule l'URL d'affichage d'une photo de profil au moment de la lecture.
@@ -24,6 +25,7 @@ public class MediaUrlResolver {
 
     /** URL de la photo d'un utilisateur (professionnel ou client), ou {@code null}. */
     public String photoUrlOf(Utilisateur utilisateur) {
+        utilisateur = Entites.reel(utilisateur);
         if (utilisateur instanceof Professionnel pro) {
             String fresh = imageStorageService.getAccessUrl(pro.getPhotoObjectKey());
             // Repli : ancienne URL enregistrée (comptes créés avant la génération à la lecture).

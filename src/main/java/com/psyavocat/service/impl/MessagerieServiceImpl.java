@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import com.psyavocat.service.support.Entites;
 
 @Service
 @Transactional
@@ -200,6 +201,8 @@ public class MessagerieServiceImpl implements MessagerieService {
      * - toute autre combinaison (administrateur, professionnel à professionnel, soi-même) est refusée.
      */
     private void verifierDestinataireAutorise(Utilisateur expediteur, Utilisateur destinataire) {
+        expediteur = Entites.reel(expediteur);
+        destinataire = Entites.reel(destinataire);
         if (expediteur.getId().equals(destinataire.getId())) {
             throw new BadRequestException("Vous ne pouvez pas vous envoyer de message");
         }
@@ -268,6 +271,7 @@ public class MessagerieServiceImpl implements MessagerieService {
     }
 
     private String typeDe(Utilisateur u) {
+        u = Entites.reel(u);
         if (u instanceof Avocat) {
             return "AVOCAT";
         }

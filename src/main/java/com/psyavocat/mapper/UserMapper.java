@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
+import com.psyavocat.service.support.Entites;
 
 @Component
 public class UserMapper {
@@ -18,6 +19,7 @@ public class UserMapper {
     }
 
     public UserProfileResponse toProfileResponse(Utilisateur utilisateur) {
+        utilisateur = Entites.reel(utilisateur);
         if (utilisateur == null) {
             return null;
         }

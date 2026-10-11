@@ -18,6 +18,7 @@ public final class ClientAccounts {
     }
 
     public static boolean isClient(Utilisateur utilisateur) {
+        utilisateur = Entites.reel(utilisateur);
         return utilisateur instanceof Client
                 || utilisateur instanceof Patient
                 || utilisateur instanceof Justiciable;
@@ -25,6 +26,7 @@ public final class ClientAccounts {
 
     /** Photo de profil d'un client, ou {@code null} si l'utilisateur n'est pas un client. */
     public static PhotoProfil photoOf(Utilisateur utilisateur) {
+        utilisateur = Entites.reel(utilisateur);
         PhotoProfil photo = null;
         if (utilisateur instanceof Client client) {
             photo = client.getPhoto();

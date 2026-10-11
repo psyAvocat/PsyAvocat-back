@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Map;
+import com.psyavocat.service.support.Entites;
 
 /**
  * Événements métier liés aux rendez-vous : notifications des parties concernées
@@ -86,7 +87,7 @@ public class RendezVousEvenements {
 
     /** AVOCAT ou PSYCHOLOGUE, selon le praticien du rendez-vous. */
     public static String universDe(RendezVous rdv) {
-        return rdv.getProfessionnel() instanceof Avocat ? "AVOCAT" : "PSYCHOLOGUE";
+        return Entites.reel(rdv.getProfessionnel()) instanceof Avocat ? "AVOCAT" : "PSYCHOLOGUE";
     }
 
     private void notifierClient(RendezVous rdv, String type, String titre, String message) {
@@ -116,7 +117,7 @@ public class RendezVousEvenements {
         if (p == null) {
             return "votre praticien";
         }
-        String civilite = p instanceof Avocat ? "Me " : "Dr ";
+        String civilite = Entites.reel(p) instanceof Avocat ? "Me " : "Dr ";
         return civilite + p.getPrenom() + " " + p.getNom();
     }
 

@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
+import com.psyavocat.service.support.Entites;
 
 @Service
 @Transactional
@@ -417,7 +418,7 @@ public class RendezVousServiceImpl implements RendezVousService {
             builder.professionnelId(pro.getId())
                     .professionnelNom(pro.getNom())
                     .professionnelPrenom(pro.getPrenom())
-                    .typeProfessionnel(pro instanceof Avocat ? "AVOCAT" : "PSYCHOLOGUE")
+                    .typeProfessionnel(Entites.reel(pro) instanceof Avocat ? "AVOCAT" : "PSYCHOLOGUE")
                     .professionnelPhotoUrl(mediaUrlResolver.photoUrlOf(pro));
             if (pro.getSpecialites() != null && !pro.getSpecialites().isEmpty()) {
                 builder.professionnelSpecialite(pro.getSpecialites().get(0).getNom());

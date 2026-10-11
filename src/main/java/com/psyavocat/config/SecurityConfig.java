@@ -86,6 +86,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/specialites", "/api/specialites/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/domaines", "/api/domaines/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categories-besoin", "/api/categories-besoin/**").permitAll()
+                        // Articles et conseils publiés : lisibles en mode invité (mobile).
+                        // /mes-contenus reste réservé à l'auteur connecté (avant la règle publique).
+                        .requestMatchers(HttpMethod.GET, "/api/contenus/mes-contenus").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/contenus", "/api/contenus/*").permitAll()
                         // Tout autre endpoint nécessite une authentification Firebase valide
                         .anyRequest().authenticated()
                 )

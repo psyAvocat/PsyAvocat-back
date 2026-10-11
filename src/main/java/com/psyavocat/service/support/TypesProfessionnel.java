@@ -63,6 +63,7 @@ public final class TypesProfessionnel {
 
     /** Type d'un professionnel selon son métier. */
     public static String typeDe(Professionnel professionnel) {
+        professionnel = Entites.reel(professionnel);
         if (professionnel instanceof Avocat) {
             return AVOCAT;
         }

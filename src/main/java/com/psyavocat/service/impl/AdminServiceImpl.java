@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import com.psyavocat.service.support.Entites;
 
 @Service
 @Transactional
@@ -212,11 +213,12 @@ public class AdminServiceImpl implements AdminService {
                 .statut(s.getStatut())
                 .dateSignalement(s.getDateSignalement())
                 .typeProfessionnel(universDe(vise))
-                .statutProfessionnel(vise instanceof Professionnel pro ? pro.getStatutValidation() : null)
+                .statutProfessionnel(Entites.reel(vise) instanceof Professionnel pro ? pro.getStatutValidation() : null)
                 .build();
     }
 
     private String universDe(Utilisateur u) {
+        u = Entites.reel(u);
         if (u instanceof Avocat) {
             return "AVOCAT";
         }
