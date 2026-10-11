@@ -27,6 +27,9 @@ public class Reponse {
 
     private Integer poids;
 
+    /** Réponse désactivée : plus proposée ni acceptée dans un nouveau parcours. */
+    private Boolean actif = true;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "question_id", nullable = false)
     private Question question;

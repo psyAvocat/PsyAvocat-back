@@ -1,6 +1,5 @@
 package com.psyavocat.controller;
 
-import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatDirectRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousPsyRequest;
 import com.psyavocat.dto.rendezvous.ModifierCreneauRequest;
@@ -41,13 +40,6 @@ public class RendezVousController {
             @Valid @RequestBody CreateRendezVousAvocatRequest request
     ) {
         return ResponseEntity.status(HttpStatus.CREATED).body(rendezVousService.createRendezVousAvocat(request));
-    }
-
-    @PostMapping("/avocat/direct")
-    public ResponseEntity<RendezVousResponseDTO> createRendezVousAvocatDirect(
-            @Valid @RequestBody CreateRendezVousAvocatDirectRequest request
-    ) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(rendezVousService.createRendezVousAvocatDirect(request));
     }
 
     @GetMapping

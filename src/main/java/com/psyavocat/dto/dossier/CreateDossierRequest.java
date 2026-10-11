@@ -16,4 +16,7 @@ public class CreateDossierRequest {
     private String titre;
 
     private String description;
+
+    /** Domaine juridique (spécialité AVOCAT du référentiel), facultatif. */
+    private String specialiteId;
 }

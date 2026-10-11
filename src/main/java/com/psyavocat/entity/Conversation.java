@@ -23,6 +23,8 @@ public class Conversation {
 
     private String statut;
 
+    // Chargement groupé : la liste des conversations ne déclenche pas une requête par conversation.
+    @org.hibernate.annotations.BatchSize(size = 50)
     @ManyToMany
     @JoinTable(
             name = "conversation_participants",
@@ -31,6 +33,7 @@ public class Conversation {
     )
     private List<Utilisateur> participants = new ArrayList<>();
 
+    @org.hibernate.annotations.BatchSize(size = 50)
     @OneToMany(mappedBy = "conversation", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<MessageContact> messages = new ArrayList<>();
 }

@@ -2,20 +2,28 @@ package com.psyavocat.service.impl;
 
 import com.psyavocat.entity.CategorieBesoin;
 import com.psyavocat.entity.Professionnel;
-import com.psyavocat.entity.Psychologue;
 import com.psyavocat.entity.Specialite;
 import com.psyavocat.repository.ProfessionnelRepository;
 import com.psyavocat.service.MatchingProfessionnelService;
+import com.psyavocat.service.support.TypesProfessionnel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
- * Implémentation du service de matching des professionnels basée sur MySQL.
+ * Matching des professionnels à partir des relations réelles du référentiel :
+ * catégorie de besoin → spécialités liées (même univers) → professionnels APPROVED et actifs
+ * du métier correspondant.
+ *
+ * Aucun repli : sans correspondance, la liste est vide (l'appelant l'indique explicitement).
+ * Un avocat n'est jamais recommandé pour un besoin psychologique, et inversement.
  */
 @Slf4j
 @Service
@@ -27,67 +35,48 @@ public class MatchingProfessionnelServiceImpl implements MatchingProfessionnelSe
 
     @Override
     public List<Professionnel> matcherParSpecialite(Specialite specialite, int limite) {
-        if (specialite == null || specialite.getId() == null) {
-            return getFallbackProfessionnels(limite);
+        String type = TypesProfessionnel.typeDe(specialite);
+        if (specialite == null || specialite.getId() == null || type == null) {
+            return List.of();
         }
-
-        List<Professionnel> correspondants = professionnelRepository.searchProfessionnels(
-                "VALIDE",
-                null,
-                null,
-                specialite.getId()
-        );
-
-        if (correspondants.isEmpty()) {
-            correspondants = getFallbackProfessionnels(limite);
-        }
-
-        return correspondants.stream().limit(limite).toList();
+        return classer(professionnelRepository.findApprouvesParSpecialites(Set.of(specialite.getId())),
+                type, Set.of(specialite.getId()), limite);
     }
 
     @Override
     public List<Professionnel> matcherParCategorieBesoin(CategorieBesoin categorieBesoin, int limite) {
-        if (categorieBesoin == null) {
-            return getFallbackProfessionnels(limite);
+        if (categorieBesoin == null || Boolean.FALSE.equals(categorieBesoin.getActif())) {
+            return List.of();
         }
-
-        List<Professionnel> correspondants = new ArrayList<>();
-
-        // Si la catégorie de besoin est liée à des spécialités
-        if (categorieBesoin.getSpecialites() != null && !categorieBesoin.getSpecialites().isEmpty()) {
-            for (Specialite spec : categorieBesoin.getSpecialites()) {
-                List<Professionnel> list = professionnelRepository.searchProfessionnels(
-                        "VALIDE",
-                        null,
-                        null,
-                        spec.getId()
-                );
-                for (Professionnel p : list) {
-                    if (!correspondants.contains(p)) {
-                        correspondants.add(p);
-                    }
-                }
-            }
+        String type = TypesProfessionnel.normaliserSansErreur(categorieBesoin.getTypeProfessionnel());
+        if (type == null) {
+            log.warn("Catégorie de besoin {} sans univers : aucune recommandation possible", categorieBesoin.getId());
+            return List.of();
         }
-
-        // Si aucun pro par spécialité directe, chercher tous les psychologues validés
-        if (correspondants.isEmpty()) {
-            List<Professionnel> allValides = professionnelRepository.findByStatutValidation("VALIDE");
-            correspondants = allValides.stream()
-                    .filter(p -> p instanceof Psychologue)
-                    .toList();
+        // Seules les spécialités du même univers que la catégorie comptent.
+        Set<String> specialiteIds = categorieBesoin.getSpecialites().stream()
+                .filter(s -> type.equals(TypesProfessionnel.typeDe(s)))
+                .map(Specialite::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (specialiteIds.isEmpty()) {
+            return List.of();
         }
-
-        if (correspondants.isEmpty()) {
-            correspondants = getFallbackProfessionnels(limite);
-        }
-
-        return correspondants.stream().limit(limite).toList();
+        return classer(professionnelRepository.findApprouvesParSpecialites(specialiteIds), type, specialiteIds, limite);
     }
 
-    private List<Professionnel> getFallbackProfessionnels(int limite) {
-        return professionnelRepository.findByStatutValidation("VALIDE")
-                .stream()
+    /**
+     * Filtre sur le métier attendu, puis classe : nombre de spécialités correspondantes (décroissant),
+     * puis nom et prénom (ordre stable et déterministe).
+     */
+    private List<Professionnel> classer(List<Professionnel> candidats, String type, Set<String> specialiteIds, int limite) {
+        return candidats.stream()
+                .filter(p -> type.equals(TypesProfessionnel.typeDe(p)))
+                .sorted(Comparator
+                        .comparingLong((Professionnel p) -> -p.getSpecialites().stream()
+                                .filter(s -> specialiteIds.contains(s.getId())).count())
+                        .thenComparing(p -> Objects.toString(p.getNom(), ""), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(p -> Objects.toString(p.getPrenom(), ""), String.CASE_INSENSITIVE_ORDER))
                 .limit(limite)
                 .toList();
     }

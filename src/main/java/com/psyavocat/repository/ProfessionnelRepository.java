@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -31,4 +32,12 @@ public interface ProfessionnelRepository extends JpaRepository<Professionnel, St
             @Param("modeConsultation") String modeConsultation,
             @Param("specialiteId") String specialiteId
     );
+
+    /**
+     * Professionnels approuvés et actifs rattachés à au moins une des spécialités données
+     * (base du matching de l'orientation).
+     */
+    @Query("SELECT DISTINCT p FROM Professionnel p JOIN p.specialites s WHERE s.id IN :specialiteIds "
+            + "AND p.statutValidation = 'APPROVED' AND (p.actif IS NULL OR p.actif = true)")
+    List<Professionnel> findApprouvesParSpecialites(@Param("specialiteIds") Collection<String> specialiteIds);
 }

@@ -20,9 +20,46 @@ public class PaiementServiceImpl implements PaiementService {
     public static final BigDecimal TAUX_ACOMPTE_RDV = new BigDecimal("0.20");
 
     private final PaiementRepository paiementRepository;
+    private final com.psyavocat.security.AuthenticationContext authenticationContext;
 
-    public PaiementServiceImpl(PaiementRepository paiementRepository) {
+    public PaiementServiceImpl(PaiementRepository paiementRepository,
+                               com.psyavocat.security.AuthenticationContext authenticationContext) {
         this.paiementRepository = paiementRepository;
+        this.authenticationContext = authenticationContext;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<com.psyavocat.dto.paiement.PaiementResponseDTO> getMesPaiements() {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        return paiementRepository.findByUtilisateurIdOrderByDatePaiementDesc(uid).stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    private com.psyavocat.dto.paiement.PaiementResponseDTO toDto(Paiement p) {
+        var builder = com.psyavocat.dto.paiement.PaiementResponseDTO.builder()
+                .id(p.getId())
+                .montant(p.getMontant())
+                .devise("XOF")
+                .datePaiement(p.getDatePaiement())
+                .statut(p.getStatut())
+                .methode(p.getMethode())
+                .simulation(p.getMethode() != null && p.getMethode().startsWith("SIMULATION"));
+        RendezVous rdv = p.getRendezVous();
+        if (rdv != null) {
+            builder.rendezVousId(rdv.getId())
+                    .rendezVousDate(rdv.getDateHeure())
+                    .statutRendezVous(rdv.getStatut())
+                    .montantTotalRendezVous(rdv.getMontantTotal())
+                    .devise(rdv.getDevise() != null ? rdv.getDevise() : "XOF");
+            if (rdv.getProfessionnel() != null) {
+                builder.professionnelNom(rdv.getProfessionnel().getNom())
+                        .professionnelPrenom(rdv.getProfessionnel().getPrenom())
+                        .typeProfessionnel(rdv.getProfessionnel() instanceof com.psyavocat.entity.Avocat ? "AVOCAT" : "PSYCHOLOGUE");
+            }
+        }
+        return builder.build();
     }
 
     @Override

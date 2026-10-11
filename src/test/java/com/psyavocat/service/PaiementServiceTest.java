@@ -31,7 +31,7 @@ class PaiementServiceTest {
 
     @BeforeEach
     void setUp() {
-        paiementService = new PaiementServiceImpl(paiementRepository);
+        paiementService = new PaiementServiceImpl(paiementRepository, null);
     }
 
     @Test

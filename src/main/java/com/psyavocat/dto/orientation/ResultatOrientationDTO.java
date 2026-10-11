@@ -34,4 +34,10 @@ public class ResultatOrientationDTO {
     private String domaineNom;
     private List<ResultatOrientationCategorieDTO> scoresParCategorie;
     private List<ProfessionnelResponseDTO> professionnelsRecommandes;
+
+    /**
+     * État explicite de la recommandation : PROFESSIONNELS_TROUVES ou
+     * AUCUN_PROFESSIONNEL_DISPONIBLE (aucun praticien approuvé lié aux besoins identifiés).
+     */
+    private String etatRecommandation;
 }

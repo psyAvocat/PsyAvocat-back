@@ -60,6 +60,14 @@ public class RendezVousEvenements {
         }
     }
 
+    /** Annulation décidée par la plateforme (praticien suspendu ou refusé) : le client est prévenu. */
+    public void rendezVousAnnuleParPlateforme(RendezVous rdv) {
+        notifierClient(rdv, "RDV_ANNULE", "Rendez-vous annulé",
+                "Votre rendez-vous du " + quand(rdv) + " avec " + nomPraticien(rdv)
+                        + " est annulé : ce praticien n'est plus disponible sur PsyAvocat. "
+                        + "L'acompte simulé est annulé.");
+    }
+
     public void rappel(RendezVous rdv, String type, String titre, String message) {
         notifierClient(rdv, type, titre, message);
         notifierPraticien(rdv, type, titre, message);

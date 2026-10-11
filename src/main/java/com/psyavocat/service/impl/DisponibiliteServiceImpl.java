@@ -12,6 +12,7 @@ import com.psyavocat.repository.ProfessionnelRepository;
 import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.realtime.RealtimeGateway;
 import com.psyavocat.service.DisponibiliteService;
+import com.psyavocat.service.support.AccesProfessionnel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,17 +27,20 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
     private final ProfessionnelRepository professionnelRepository;
     private final AuthenticationContext authenticationContext;
     private final RealtimeGateway realtimeGateway;
+    private final AccesProfessionnel accesProfessionnel;
 
     public DisponibiliteServiceImpl(
             DisponibiliteRepository disponibiliteRepository,
             ProfessionnelRepository professionnelRepository,
             AuthenticationContext authenticationContext,
-            RealtimeGateway realtimeGateway
+            RealtimeGateway realtimeGateway,
+            AccesProfessionnel accesProfessionnel
     ) {
         this.disponibiliteRepository = disponibiliteRepository;
         this.professionnelRepository = professionnelRepository;
         this.authenticationContext = authenticationContext;
         this.realtimeGateway = realtimeGateway;
+        this.accesProfessionnel = accesProfessionnel;
     }
 
     @Override
@@ -57,9 +61,8 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
             throw new BadRequestException("Impossible de créer un créneau pour une heure déjà passée aujourd'hui");
         }
 
-        String uid = authenticationContext.getRequiredFirebaseUid();
-        Professionnel pro = professionnelRepository.findById(uid)
-                .orElseThrow(() -> new ForbiddenException("Seul un professionnel peut définir ses disponibilités"));
+        // Seul un professionnel approuvé et actif publie des créneaux réservables.
+        Professionnel pro = accesProfessionnel.exigerApprouve();
 
         // Vérification stricte de non-chevauchement et d'unicité d'heure pour ce professionnel ce jour-là
         List<Disponibilite> conflits = disponibiliteRepository.findConflictingDisponibilites(
@@ -97,9 +100,8 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
 
     @Override
     public List<DisponibiliteResponseDTO> createDisponibilitesBatch(List<CreateDisponibiliteRequest> requests) {
-        String uid = authenticationContext.getRequiredFirebaseUid();
-        Professionnel pro = professionnelRepository.findById(uid)
-                .orElseThrow(() -> new ForbiddenException("Seul un professionnel peut définir ses disponibilités"));
+        // Seul un professionnel approuvé et actif publie des créneaux réservables.
+        Professionnel pro = accesProfessionnel.exigerApprouve();
 
         LocalDate today = LocalDate.now();
         java.time.LocalTime now = java.time.LocalTime.now();
@@ -175,7 +177,7 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
 
     @Override
     public void deleteDisponibilite(String id) {
-        String uid = authenticationContext.getRequiredFirebaseUid();
+        String uid = accesProfessionnel.exigerApprouve().getId();
         Disponibilite disp = disponibiliteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Disponibilité introuvable"));
 
@@ -194,6 +196,9 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
     @Override
     @Transactional(readOnly = true)
     public List<DisponibiliteResponseDTO> getDisponibilitesLibres(String professionnelId) {
+        if (!professionnelReservable(professionnelId)) {
+            return List.of();
+        }
         LocalDate today = LocalDate.now();
         java.time.LocalTime now = java.time.LocalTime.now();
 
@@ -217,6 +222,9 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
     @Override
     @Transactional(readOnly = true)
     public List<DisponibiliteResponseDTO> getCreneauxAVenir(String professionnelId) {
+        if (!professionnelReservable(professionnelId)) {
+            return List.of();
+        }
         LocalDate today = LocalDate.now();
         java.time.LocalTime now = java.time.LocalTime.now();
 
@@ -226,6 +234,13 @@ public class DisponibiliteServiceImpl implements DisponibiliteService {
                 .filter(d -> d.getDate().isAfter(today) || d.getHeureDebut().isAfter(now))
                 .map(this::toDto)
                 .toList();
+    }
+
+    /** Les créneaux d'un professionnel non approuvé (en attente, suspendu, refusé) ne sont jamais proposés. */
+    private boolean professionnelReservable(String professionnelId) {
+        return professionnelRepository.findById(professionnelId)
+                .map(AccesProfessionnel::estApprouve)
+                .orElse(false);
     }
 
     /** Prévient les clients connectés que les créneaux de ce professionnel ont changé. */

@@ -13,4 +13,10 @@ public interface JustificatifService {
     Resource downloadJustificatif(String id);
     String getPresignedUrl(String id);
     void deleteJustificatif(String id);
+
+    /**
+     * Décision de l'administration sur un justificatif : VALIDE ou REJETE (motif obligatoire).
+     * Un justificatif validé n'est plus supprimable par le professionnel.
+     */
+    com.psyavocat.dto.justificatif.JustificatifResponseDTO decider(String id, String statut, String motif);
 }

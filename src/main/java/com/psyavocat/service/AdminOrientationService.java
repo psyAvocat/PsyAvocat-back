@@ -74,4 +74,10 @@ public interface AdminOrientationService {
     PonderationDTO updatePonderation(String id, PonderationCreateRequest request);
 
     void deletePonderation(String id);
+
+    /** Active / désactive une question (désactivée : plus proposée aux nouveaux répondants). */
+    QuestionDTO changerActivationQuestion(String id, boolean actif);
+
+    /** Active / désactive une réponse. */
+    ReponseDTO changerActivationReponse(String id, boolean actif);
 }

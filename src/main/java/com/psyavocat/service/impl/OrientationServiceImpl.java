@@ -15,7 +15,6 @@ import com.psyavocat.entity.Questionnaire;
 import com.psyavocat.entity.Reponse;
 import com.psyavocat.entity.ResultatOrientation;
 import com.psyavocat.entity.ResultatOrientationCategorie;
-import com.psyavocat.entity.Specialite;
 import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.exception.BadRequestException;
 import com.psyavocat.exception.ResourceNotFoundException;
@@ -32,6 +31,7 @@ import com.psyavocat.repository.UtilisateurRepository;
 import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.MatchingProfessionnelService;
 import com.psyavocat.service.OrientationService;
+import com.psyavocat.service.support.TypesProfessionnel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,25 +40,34 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
- * Implémentation du service d'orientation de PsyAvocat.
+ * Orientation psychologique (facultative, non diagnostique).
  *
- * Principes stricts :
- * 1. POO / SOLID : Découplage clair des responsabilités (Matching délégué à MatchingProfessionnelService).
- * 2. 100% Data-Driven : AUCUN score, AUCUNE question ni règle métier en dur dans le code.
- *    Les pondérations multi-critères proviennent exclusivement de la base MySQL (PonderationOrientation).
- * 3. Validation exhaustive (mode sélection unique, questions obligatoires, intégrité du questionnaire).
- * 4. Stratégie de départage déterministe en cas d'égalité (priorité au motif principal Q01).
+ * Principes :
+ * 1. 100 % piloté par la configuration de l'administration : questionnaire actif, questions et
+ *    réponses actives, pondérations vers des catégories de besoin ACTIVES de l'univers Psychologue.
+ * 2. Une configuration désactivée ou obsolète n'est jamais proposée ni acceptée.
+ * 3. Les pondérations internes ne sont jamais exposées aux clients.
+ * 4. Départage déterministe sans règle fondée sur un libellé ou un code de question :
+ *    la première question (dans l'ordre configuré) dont la réponse pondère une catégorie à égalité
+ *    l'emporte ; à défaut, ordre alphabétique des catégories.
+ * 5. Recommandations : psychologues APPROVED liés aux spécialités de la catégorie ; aucun repli.
  */
 @Slf4j
 @Service
 @Transactional
 public class OrientationServiceImpl implements OrientationService {
+
+    static final String TYPE_PSYCHOLOGIQUE = "PSYCHOLOGIQUE";
+    static final String ETAT_PROFESSIONNELS_TROUVES = "PROFESSIONNELS_TROUVES";
+    static final String ETAT_AUCUN_PROFESSIONNEL = "AUCUN_PROFESSIONNEL_DISPONIBLE";
+    private static final int NB_RECOMMANDATIONS = 5;
 
     private final QuestionnaireRepository questionnaireRepository;
     private final QuestionRepository questionRepository;
@@ -101,263 +110,165 @@ public class OrientationServiceImpl implements OrientationService {
         this.authenticationContext = authenticationContext;
     }
 
+    // ------------------------------------------------------------------
+    // Lecture publique (clients)
+    // ------------------------------------------------------------------
+
+    /** Questionnaires publiés : uniquement actifs et psychologiques. */
     @Override
     @Transactional(readOnly = true)
     public List<QuestionnaireDTO> getQuestionnaires(String type) {
-        List<Questionnaire> list = questionnaireRepository.findByActifTrue();
-        if (type != null && !type.isBlank()) {
-            list = list.stream()
-                    .filter(q -> type.equalsIgnoreCase(q.getType()))
-                    .toList();
+        if (type != null && !type.isBlank() && !TYPE_PSYCHOLOGIQUE.equalsIgnoreCase(type.trim())) {
+            return List.of();
         }
-        return list.stream()
+        return questionnaireRepository.findAllByTypeAndActifTrue(TYPE_PSYCHOLOGIQUE).stream()
                 .map(this::toQuestionnaireDto)
                 .toList();
     }
 
+    /** Questionnaire publié du type demandé ; jamais de repli sur un questionnaire inactif. */
     @Override
     @Transactional(readOnly = true)
     public QuestionnaireDTO getQuestionnaireByType(String type) {
-        Questionnaire q = questionnaireRepository.findByCode(type)
-                .orElseGet(() -> questionnaireRepository.findByTypeAndActifTrue(type.toUpperCase())
-                        .orElseGet(() -> questionnaireRepository.findByType(type.toUpperCase())
-                                .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable pour le type/code : " + type))));
-        return toQuestionnaireDto(q);
+        if (type == null || !TYPE_PSYCHOLOGIQUE.equalsIgnoreCase(type.trim())) {
+            throw new ResourceNotFoundException("Aucun questionnaire d'orientation n'est proposé pour ce parcours.");
+        }
+        return questionnaireRepository.findAllByTypeAndActifTrue(TYPE_PSYCHOLOGIQUE).stream()
+                .findFirst()
+                .map(this::toQuestionnaireDto)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Aucun questionnaire d'orientation n'est publié pour le moment."));
     }
+
+    // ------------------------------------------------------------------
+    // Évaluation
+    // ------------------------------------------------------------------
 
     @Override
     public ResultatOrientationDTO evaluerQuestionnaire(SoumissionQuestionnaireRequest request) {
-        // 1 & 2. Récupérer le questionnaire et vérifier son existence
         Questionnaire questionnaire = questionnaireRepository.findById(request.getQuestionnaireId())
-                .orElseGet(() -> questionnaireRepository.findByCode(request.getQuestionnaireId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + request.getQuestionnaireId())));
+                .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + request.getQuestionnaireId()));
 
-        // 3. Vérifier que le questionnaire est actif
-        if (Boolean.FALSE.equals(questionnaire.getActif())) {
-            throw new BadRequestException("Le questionnaire sélectionné n'est plus actif");
+        if (!Boolean.TRUE.equals(questionnaire.getActif()) || !TYPE_PSYCHOLOGIQUE.equalsIgnoreCase(questionnaire.getType())) {
+            throw new BadRequestException("Ce questionnaire n'est plus proposé. Rechargez le questionnaire actuel.");
         }
-
-        // 4. Vérifier et récupérer les réponses
         if (request.getReponseIds() == null || request.getReponseIds().isEmpty()) {
             throw new BadRequestException("La liste des réponses soumises ne peut pas être vide");
         }
 
         List<Reponse> reponses = reponseRepository.findAllById(request.getReponseIds());
-        if (reponses.size() != request.getReponseIds().size()) {
-            throw new BadRequestException("Certaines réponses sélectionnées n'existent pas en base de données");
+        if (reponses.size() != request.getReponseIds().stream().distinct().count()) {
+            throw new BadRequestException("Certaines réponses ne sont plus disponibles. Rechargez le questionnaire actuel.");
         }
 
-        // 5. Vérifier que chaque réponse appartient bien au questionnaire
+        // Chaque réponse doit appartenir au questionnaire et être active, ainsi que sa question.
         for (Reponse r : reponses) {
-            if (r.getQuestion() == null || r.getQuestion().getQuestionnaire() == null ||
-                    !r.getQuestion().getQuestionnaire().getId().equals(questionnaire.getId())) {
+            Question q = r.getQuestion();
+            if (q == null || q.getQuestionnaire() == null || !q.getQuestionnaire().getId().equals(questionnaire.getId())) {
                 throw new BadRequestException("La réponse [" + r.getId() + "] n'appartient pas au questionnaire sélectionné");
             }
+            if (Boolean.FALSE.equals(r.getActif()) || Boolean.FALSE.equals(q.getActif())) {
+                throw new BadRequestException("Le questionnaire a été modifié depuis son ouverture. Rechargez-le pour continuer.");
+            }
         }
 
-        // 6. Validation du mode de sélection par question
         Map<String, List<Reponse>> reponsesParQuestion = reponses.stream()
                 .collect(Collectors.groupingBy(r -> r.getQuestion().getId()));
-
-        for (Map.Entry<String, List<Reponse>> entry : reponsesParQuestion.entrySet()) {
-            if (entry.getValue().size() > 1) {
-                Reponse firstRep = entry.getValue().get(0);
-                Question questionAssociee = firstRep.getQuestion();
-                boolean allowsMultiple = questionAssociee != null &&
-                        "CHOIX_MULTIPLE".equalsIgnoreCase(questionAssociee.getTypeReponse());
-                if (!allowsMultiple) {
-                    throw new BadRequestException("Mode sélection unique : une seule réponse est autorisée par question (question : "
-                            + (questionAssociee != null ? questionAssociee.getTexte() : entry.getKey()) + ")");
-                }
+        for (List<Reponse> groupe : reponsesParQuestion.values()) {
+            Question q = groupe.get(0).getQuestion();
+            if (groupe.size() > 1 && !"CHOIX_MULTIPLE".equalsIgnoreCase(q.getTypeReponse())) {
+                throw new BadRequestException("Une seule réponse est autorisée pour la question : " + q.getTexte());
             }
         }
 
-        // 6bis. Vérifier les questions obligatoires
-        List<Question> questionsDuQuestionnaire = questionRepository.findByQuestionnaireIdOrderByOrdreAsc(questionnaire.getId());
-        for (Question q : questionsDuQuestionnaire) {
+        List<Question> questionsActives = questionRepository.findByQuestionnaireIdOrderByOrdreAsc(questionnaire.getId()).stream()
+                .filter(q -> !Boolean.FALSE.equals(q.getActif()))
+                .toList();
+        for (Question q : questionsActives) {
             if (Boolean.TRUE.equals(q.getObligatoire()) && !reponsesParQuestion.containsKey(q.getId())) {
-                throw new BadRequestException("La question obligatoire '" + q.getTexte() + "' n'a pas reçu de réponse");
+                throw new BadRequestException("La question obligatoire « " + q.getTexte() + " » n'a pas reçu de réponse");
             }
         }
 
-        // 7. Récupérer toutes les pondérations associées aux réponses
-        List<String> reponseIds = reponses.stream().map(Reponse::getId).toList();
-        List<PonderationOrientation> ponderations = ponderationOrientationRepository.findByReponseIdIn(reponseIds);
+        // Pondérations utiles : catégories de besoin ACTIVES de l'univers Psychologue uniquement.
+        List<PonderationOrientation> ponderations = ponderationOrientationRepository
+                .findByReponseIdIn(reponses.stream().map(Reponse::getId).toList()).stream()
+                .filter(p -> categorieUtilisable(p.getCategorieBesoin()))
+                .toList();
 
-        CategorieBesoin categorieGagnante = null;
-        Specialite specialiteGagnante = null;
-        double scoreMaximal = 0.0;
-        String statutDepartage = "SCORE_UNIQUE_MAXIMAL";
+        Map<CategorieBesoin, Integer> scores = new LinkedHashMap<>();
+        for (PonderationOrientation p : ponderations) {
+            scores.merge(p.getCategorieBesoin(), p.getPoids() != null ? p.getPoids() : 0, Integer::sum);
+        }
+        if (scores.isEmpty()) {
+            throw new BadRequestException("Vos réponses ne permettent pas encore de proposer une orientation. "
+                    + "Vous pouvez consulter directement la liste des psychologues.");
+        }
 
-        if ("PSYCHOLOGIQUE".equalsIgnoreCase(questionnaire.getType())) {
-            // 8 & 9. Agréger les poids par CategorieBesoin
-            Map<CategorieBesoin, Integer> scoresParCat = new HashMap<>();
-            for (PonderationOrientation p : ponderations) {
-                if (p.getCategorieBesoin() != null) {
-                    scoresParCat.merge(p.getCategorieBesoin(), p.getPoids(), Integer::sum);
-                }
-            }
+        int maxScore = Collections.max(scores.values());
+        List<CategorieBesoin> exAequo = scores.entrySet().stream()
+                .filter(e -> e.getValue() == maxScore)
+                .map(Map.Entry::getKey)
+                .toList();
 
-            if (scoresParCat.isEmpty()) {
-                throw new BadRequestException("Aucune pondération trouvée en base pour orienter les réponses fournies");
-            }
-
-            // 10. Déterminer la cible ayant le score maximal
-            int maxScore = Collections.max(scoresParCat.values());
-            scoreMaximal = (double) maxScore;
-
-            List<CategorieBesoin> candidatesTied = scoresParCat.entrySet().stream()
-                    .filter(e -> e.getValue() == maxScore)
-                    .map(Map.Entry::getKey)
-                    .toList();
-
-            if (candidatesTied.size() == 1) {
-                categorieGagnante = candidatesTied.get(0);
-            } else {
-                // 13. Stratégie d'égalité : départage par la question Q01 (motif principal)
-                statutDepartage = "EGALITE_DEPARTAGEE_PAR_Q01";
-                Reponse reponseQ01 = trouverReponseQuestionOrdre(reponses, 1, "Q01");
-
-                CategorieBesoin catQ01 = null;
-                if (reponseQ01 != null) {
-                    List<PonderationOrientation> pondsQ01 = ponderationOrientationRepository.findByReponseId(reponseQ01.getId());
-                    if (!pondsQ01.isEmpty()) {
-                        catQ01 = pondsQ01.get(0).getCategorieBesoin();
-                    }
-                }
-
-                if (catQ01 != null && candidatesTied.contains(catQ01)) {
-                    categorieGagnante = catQ01;
-                    log.info("ℹ️ Égalité de score maximal ({}) départagée en faveur de la catégorie Q01 [{}]", maxScore, catQ01.getCode());
-                } else {
-                    // Si Q01 ne cible aucune des catégories ex-aequo, départage déterministe documenté
-                    statutDepartage = "EGALITE_DEPARTAGEE_DETERMINISTE";
-                    categorieGagnante = candidatesTied.stream()
-                            .min(Comparator.comparing(c -> c.getCode() != null ? c.getCode() : c.getNom()))
-                            .orElse(candidatesTied.get(0));
-                    log.warn("⚠️ Ambiguïté persistante : catégorie retenue par ordre déterministe [{}]", categorieGagnante.getCode());
-                }
-            }
-
-        } else if ("JURIDIQUE".equalsIgnoreCase(questionnaire.getType())) {
-            // Cas JURIDIQUE : Regroupement par Spécialité
-            Map<Specialite, Integer> scoresParSpec = new HashMap<>();
-            for (PonderationOrientation p : ponderations) {
-                if (p.getSpecialite() != null) {
-                    scoresParSpec.merge(p.getSpecialite(), p.getPoids(), Integer::sum);
-                }
-            }
-
-            if (scoresParSpec.isEmpty()) {
-                throw new BadRequestException("Aucune pondération trouvée en base pour orienter les réponses juridiques");
-            }
-
-            int maxScore = Collections.max(scoresParSpec.values());
-            scoreMaximal = (double) maxScore;
-
-            List<Specialite> candidatesTied = scoresParSpec.entrySet().stream()
-                    .filter(e -> e.getValue() == maxScore)
-                    .map(Map.Entry::getKey)
-                    .toList();
-
-            if (candidatesTied.size() == 1) {
-                specialiteGagnante = candidatesTied.get(0);
-            } else {
-                statutDepartage = "EGALITE_DEPARTAGEE_PAR_Q01";
-                Reponse reponseQ01 = trouverReponseQuestionOrdre(reponses, 1, "Q01");
-                Specialite specQ01 = null;
-                if (reponseQ01 != null) {
-                    List<PonderationOrientation> pondsQ01 = ponderationOrientationRepository.findByReponseId(reponseQ01.getId());
-                    if (!pondsQ01.isEmpty()) {
-                        specQ01 = pondsQ01.get(0).getSpecialite();
-                    }
-                }
-                if (specQ01 != null && candidatesTied.contains(specQ01)) {
-                    specialiteGagnante = specQ01;
-                } else {
-                    statutDepartage = "EGALITE_DEPARTAGEE_DETERMINISTE";
-                    specialiteGagnante = candidatesTied.stream()
-                            .min(Comparator.comparing(Specialite::getNom))
-                            .orElse(candidatesTied.get(0));
-                }
-            }
+        CategorieBesoin categorieGagnante;
+        String statutDepartage;
+        if (exAequo.size() == 1) {
+            categorieGagnante = exAequo.get(0);
+            statutDepartage = "SCORE_UNIQUE_MAXIMAL";
         } else {
-            throw new BadRequestException("Type de questionnaire non supporté : " + questionnaire.getType());
+            categorieGagnante = departager(exAequo, reponses, ponderations);
+            statutDepartage = categorieGagnante != null ? "EGALITE_DEPARTAGEE_PAR_ORDRE_DES_QUESTIONS" : null;
+            if (categorieGagnante == null) {
+                categorieGagnante = exAequo.stream()
+                        .min(Comparator.comparing(c -> Objects.toString(c.getCode() != null ? c.getCode() : c.getNom(), "")))
+                        .orElseThrow();
+                statutDepartage = "EGALITE_DEPARTAGEE_DETERMINISTE";
+            }
         }
 
-        // 13. Matching des professionnels (délégué au MatchingProfessionnelService)
-        List<Professionnel> prosRecommandes;
-        if (categorieGagnante != null) {
-            prosRecommandes = matchingProfessionnelService.matcherParCategorieBesoin(categorieGagnante, 5);
-        } else {
-            prosRecommandes = matchingProfessionnelService.matcherParSpecialite(specialiteGagnante, 5);
-        }
+        List<Professionnel> prosRecommandes = matchingProfessionnelService.matcherParCategorieBesoin(categorieGagnante, NB_RECOMMANDATIONS);
 
-        // 11. Créer ResultatOrientation
-        Utilisateur user = obtenirUtilisateurCourant();
+        List<Map.Entry<CategorieBesoin, Integer>> classement = scores.entrySet().stream()
+                .sorted(Map.Entry.<CategorieBesoin, Integer>comparingByValue().reversed())
+                .toList();
 
         ResultatOrientation resultat = new ResultatOrientation();
         resultat.setDateEvaluation(LocalDateTime.now());
-        resultat.setScore(scoreMaximal);
+        resultat.setScore((double) maxScore);
         resultat.setQuestionnaire(questionnaire);
         resultat.setCategorieBesoin(categorieGagnante);
-        resultat.setSpecialite(specialiteGagnante);
-        resultat.setProfessionnelsRecommandes(prosRecommandes);
+        resultat.setProfessionnelsRecommandes(new ArrayList<>(prosRecommandes));
+
+        Utilisateur user = obtenirUtilisateurCourant();
         resultat.setUtilisateur(user);
 
-        // 12. Enregistrer le résultat si l'utilisateur est authentifié
         if (user != null) {
             resultat = resultatOrientationRepository.save(resultat);
-
-            // 12bis. Persister le classement complet multi-catégories (uniquement pour les questionnaires PSY)
-            if ("PSYCHOLOGIQUE".equalsIgnoreCase(questionnaire.getType())) {
-                Map<CategorieBesoin, Integer> scoresParCat = new HashMap<>();
-                for (PonderationOrientation p : ponderations) {
-                    if (p.getCategorieBesoin() != null) {
-                        scoresParCat.merge(p.getCategorieBesoin(), p.getPoids(), Integer::sum);
-                    }
-                }
-                List<Map.Entry<CategorieBesoin, Integer>> classement = scoresParCat.entrySet().stream()
-                        .sorted(Map.Entry.<CategorieBesoin, Integer>comparingByValue().reversed())
-                        .toList();
-
-                final ResultatOrientation savedResultat = resultat;
-                for (int i = 0; i < classement.size(); i++) {
-                    ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
-                    roc.setResultatOrientation(savedResultat);
-                    roc.setCategorieBesoin(classement.get(i).getKey());
-                    roc.setScore(classement.get(i).getValue());
-                    roc.setRang(i + 1);
-                    resultatCategorieRepository.save(roc);
-                }
-                resultat = resultatOrientationRepository.findById(resultat.getId()).orElse(resultat);
+            List<ResultatOrientationCategorie> lignes = new ArrayList<>();
+            for (int i = 0; i < classement.size(); i++) {
+                ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
+                roc.setResultatOrientation(resultat);
+                roc.setCategorieBesoin(classement.get(i).getKey());
+                roc.setScore(classement.get(i).getValue());
+                roc.setRang(i + 1);
+                resultatCategorieRepository.save(roc);
+                lignes.add(roc);
             }
+            resultat.setScoresParCategorie(lignes);
         } else {
-            // Mode anonyme (sans compte connecté) : on calcule et renseigne les scores en mémoire pour le DTO
-            if ("PSYCHOLOGIQUE".equalsIgnoreCase(questionnaire.getType())) {
-                Map<CategorieBesoin, Integer> scoresParCat = new HashMap<>();
-                for (PonderationOrientation p : ponderations) {
-                    if (p.getCategorieBesoin() != null) {
-                        scoresParCat.merge(p.getCategorieBesoin(), p.getPoids(), Integer::sum);
-                    }
-                }
-                List<Map.Entry<CategorieBesoin, Integer>> classement = scoresParCat.entrySet().stream()
-                        .sorted(Map.Entry.<CategorieBesoin, Integer>comparingByValue().reversed())
-                        .toList();
-
-                List<ResultatOrientationCategorie> scoresMem = new ArrayList<>();
-                for (int i = 0; i < classement.size(); i++) {
-                    ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
-                    roc.setCategorieBesoin(classement.get(i).getKey());
-                    roc.setScore(classement.get(i).getValue());
-                    roc.setRang(i + 1);
-                    scoresMem.add(roc);
-                }
-                resultat.setScoresParCategorie(scoresMem);
+            // Évaluation anonyme : calculée sans être enregistrée.
+            List<ResultatOrientationCategorie> lignes = new ArrayList<>();
+            for (int i = 0; i < classement.size(); i++) {
+                ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
+                roc.setCategorieBesoin(classement.get(i).getKey());
+                roc.setScore(classement.get(i).getValue());
+                roc.setRang(i + 1);
+                lignes.add(roc);
             }
+            resultat.setScoresParCategorie(lignes);
         }
 
-        // 14. Retourner le Response DTO
         return toResultatDto(resultat, statutDepartage);
     }
 
@@ -374,31 +285,61 @@ public class OrientationServiceImpl implements OrientationService {
                 .toList();
     }
 
-    private Reponse trouverReponseQuestionOrdre(List<Reponse> reponses, int ordre, String codePrefix) {
-        return reponses.stream()
-                .filter(r -> r.getQuestion() != null &&
-                        ((r.getQuestion().getOrdre() != null && r.getQuestion().getOrdre() == ordre) ||
-                         (r.getQuestion().getCode() != null && r.getQuestion().getCode().startsWith(codePrefix))))
-                .findFirst()
-                .orElse(null);
+    // ------------------------------------------------------------------
+    // Règles internes
+    // ------------------------------------------------------------------
+
+    private boolean categorieUtilisable(CategorieBesoin c) {
+        return c != null
+                && !Boolean.FALSE.equals(c.getActif())
+                && TypesProfessionnel.PSYCHOLOGUE.equals(TypesProfessionnel.normaliserSansErreur(c.getTypeProfessionnel()));
     }
 
-    private Utilisateur obtenirUtilisateurCourant() {
-        try {
-            String uid = authenticationContext.getFirebaseUid().orElse(null);
-            if (uid != null) {
-                return utilisateurRepository.findById(uid).orElse(null);
+    /**
+     * Parcourt les questions répondues dans l'ordre configuré ; la première dont une réponse
+     * pondère l'une des catégories ex aequo désigne la catégorie retenue (poids le plus fort
+     * de cette question, puis ordre alphabétique). Renvoie null si aucune question ne départage.
+     */
+    private CategorieBesoin departager(List<CategorieBesoin> exAequo, List<Reponse> reponses,
+                                       List<PonderationOrientation> ponderations) {
+        List<Question> questionsOrdonnees = reponses.stream()
+                .map(Reponse::getQuestion)
+                .distinct()
+                .sorted(Comparator.comparingInt(q -> q.getOrdre() != null ? q.getOrdre() : Integer.MAX_VALUE))
+                .toList();
+        for (Question q : questionsOrdonnees) {
+            CategorieBesoin choisie = ponderations.stream()
+                    .filter(p -> p.getReponse() != null && p.getReponse().getQuestion() != null
+                            && q.getId().equals(p.getReponse().getQuestion().getId()))
+                    .filter(p -> exAequo.contains(p.getCategorieBesoin()))
+                    .sorted(Comparator.comparingInt((PonderationOrientation p) -> -(p.getPoids() != null ? p.getPoids() : 0))
+                            .thenComparing(p -> Objects.toString(p.getCategorieBesoin().getNom(), "")))
+                    .map(PonderationOrientation::getCategorieBesoin)
+                    .findFirst()
+                    .orElse(null);
+            if (choisie != null) {
+                return choisie;
             }
-        } catch (Exception e) {
-            log.debug("Aucun contexte d'authentification disponible : {}", e.getMessage());
         }
         return null;
     }
 
+    private Utilisateur obtenirUtilisateurCourant() {
+        return authenticationContext.getFirebaseUid()
+                .flatMap(utilisateurRepository::findById)
+                .orElse(null);
+    }
+
+    // ------------------------------------------------------------------
+    // Mapping (aucune pondération exposée)
+    // ------------------------------------------------------------------
+
     private QuestionnaireDTO toQuestionnaireDto(Questionnaire q) {
         List<QuestionDTO> questionsDto = q.getQuestions() != null ? q.getQuestions().stream()
+                .filter(quest -> !Boolean.FALSE.equals(quest.getActif()))
                 .sorted(Comparator.comparingInt(quest -> quest.getOrdre() != null ? quest.getOrdre() : 0))
                 .map(this::toQuestionDto)
+                .filter(dto -> !dto.getReponses().isEmpty())
                 .toList() : Collections.emptyList();
 
         return QuestionnaireDTO.builder()
@@ -413,12 +354,12 @@ public class OrientationServiceImpl implements OrientationService {
 
     private QuestionDTO toQuestionDto(Question quest) {
         List<ReponseDTO> reponsesDto = quest.getReponses() != null ? quest.getReponses().stream()
+                .filter(r -> !Boolean.FALSE.equals(r.getActif()))
                 .map(r -> ReponseDTO.builder()
                         .id(r.getId())
                         .code(r.getCode())
                         .libelle(r.getLibelle())
                         .valeur(r.getValeur())
-                        .poids(r.getPoids())
                         .questionId(quest.getId())
                         .build())
                 .toList() : Collections.emptyList();
@@ -441,7 +382,6 @@ public class OrientationServiceImpl implements OrientationService {
                         .map(professionnelMapper::toDto)
                         .toList() : Collections.emptyList();
 
-        // Mapper le classement complet multi-catégories
         List<ResultatOrientationCategorieDTO> scoresDto = r.getScoresParCategorie() != null ?
                 r.getScoresParCategorie().stream()
                         .sorted(Comparator.comparingInt(ResultatOrientationCategorie::getRang))
@@ -473,6 +413,7 @@ public class OrientationServiceImpl implements OrientationService {
                         r.getSpecialite().getDomaine().getNom() : null)
                 .scoresParCategorie(scoresDto)
                 .professionnelsRecommandes(prosDto)
+                .etatRecommandation(prosDto.isEmpty() ? ETAT_AUCUN_PROFESSIONNEL : ETAT_PROFESSIONNELS_TROUVES)
                 .build();
     }
 }

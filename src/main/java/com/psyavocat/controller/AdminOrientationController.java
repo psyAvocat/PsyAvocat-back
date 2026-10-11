@@ -109,6 +109,16 @@ public class AdminOrientationController {
         return ResponseEntity.ok(adminOrientationService.updateQuestionComplete(id, request));
     }
 
+    @PatchMapping("/questions/{id}/actif")
+    public ResponseEntity<QuestionDTO> changerActivationQuestion(@PathVariable String id, @RequestParam boolean actif) {
+        return ResponseEntity.ok(adminOrientationService.changerActivationQuestion(id, actif));
+    }
+
+    @PatchMapping("/reponses/{id}/actif")
+    public ResponseEntity<ReponseDTO> changerActivationReponse(@PathVariable String id, @RequestParam boolean actif) {
+        return ResponseEntity.ok(adminOrientationService.changerActivationReponse(id, actif));
+    }
+
     @DeleteMapping("/questions/{id}")
     public ResponseEntity<Void> deleteQuestion(@PathVariable String id) {
         adminOrientationService.deleteQuestion(id);

@@ -275,9 +275,10 @@ class RendezVousServiceTest {
         dossierPris.setId("dossier-pris");
         dossierPris.setStatut("PRIS_EN_CHARGE");
 
+        // Le confrère ayant accepté a rendu cette soumission caduque.
         SoumissionDossier soumission = new SoumissionDossier();
         soumission.setId("soum-1");
-        soumission.setStatut("ACCEPTEE");
+        soumission.setStatut("CADUQUE");
         soumission.setDossier(dossierPris);
 
         when(authenticationContext.getRequiredFirebaseUid()).thenReturn(patient.getId());

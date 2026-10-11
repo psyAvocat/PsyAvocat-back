@@ -11,6 +11,8 @@ public interface ResultatOrientationRepository extends JpaRepository<ResultatOri
 
     List<ResultatOrientation> findByUtilisateurIdOrderByDateEvaluationDesc(String utilisateurId);
 
+    boolean existsBySpecialiteId(String specialiteId);
+
     default List<ResultatOrientation> findByPatientIdOrderByDateEvaluationDesc(String patientId) {
         return findByUtilisateurIdOrderByDateEvaluationDesc(patientId);
     }

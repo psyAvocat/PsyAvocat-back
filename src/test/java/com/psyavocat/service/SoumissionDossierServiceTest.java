@@ -47,6 +47,12 @@ class SoumissionDossierServiceTest {
     @Mock
     private AuthenticationContext authenticationContext;
 
+    @Mock
+    private com.psyavocat.repository.UtilisateurRepository utilisateurRepository;
+
+    @Mock
+    private NotificationService notificationService;
+
     private SoumissionDossierServiceImpl soumissionDossierService;
 
     private Justiciable justiciable;
@@ -60,7 +66,9 @@ class SoumissionDossierServiceTest {
                 dossierRepository,
                 soumissionDossierRepository,
                 avocatRepository,
-                authenticationContext
+                authenticationContext,
+                new com.psyavocat.service.support.AccesProfessionnel(authenticationContext, utilisateurRepository),
+                notificationService
         );
 
         justiciable = new Justiciable();
@@ -83,13 +91,16 @@ class SoumissionDossierServiceTest {
         avocatB.setId("avocat-uid-b");
         avocatB.setNom("Durand");
         avocatB.setStatutValidation("APPROVED");
+
+        org.mockito.Mockito.lenient().when(utilisateurRepository.findById(avocatA.getId())).thenReturn(Optional.of(avocatA));
+        org.mockito.Mockito.lenient().when(utilisateurRepository.findById(avocatB.getId())).thenReturn(Optional.of(avocatB));
     }
 
     @Test
     @DisplayName("Soumission d'un dossier à un avocat : statut initial EN_ATTENTE")
     void testSoumettreDossier_Succes() {
         when(authenticationContext.getRequiredFirebaseUid()).thenReturn(justiciable.getId());
-        when(dossierRepository.findById(dossier.getId())).thenReturn(Optional.of(dossier));
+        when(dossierRepository.findByIdForUpdate(dossier.getId())).thenReturn(Optional.of(dossier));
         when(avocatRepository.findById(avocatA.getId())).thenReturn(Optional.of(avocatA));
 
         when(soumissionDossierRepository.save(any(SoumissionDossier.class))).thenAnswer(invocation -> {
@@ -117,9 +128,10 @@ class SoumissionDossierServiceTest {
         SoumissionDossier existante = new SoumissionDossier();
         existante.setAvocat(avocatA);
         dossier.getSoumissions().add(existante);
+        when(soumissionDossierRepository.findByDossierId(dossier.getId())).thenReturn(List.of(existante));
 
         when(authenticationContext.getRequiredFirebaseUid()).thenReturn(justiciable.getId());
-        when(dossierRepository.findById(dossier.getId())).thenReturn(Optional.of(dossier));
+        when(dossierRepository.findByIdForUpdate(dossier.getId())).thenReturn(Optional.of(dossier));
         when(avocatRepository.findById(avocatA.getId())).thenReturn(Optional.of(avocatA));
 
         SoumissionDossierRequest request = new SoumissionDossierRequest();
@@ -262,5 +274,124 @@ class SoumissionDossierServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getId()).isEqualTo("s-active");
+    }
+    // ------------------------------------------------------------------
+    // Workflow dossier → prise en charge exclusive (lot 2)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("Acceptation : dossier pris en charge, soumissions concurrentes caduques, justiciable notifié")
+    void acceptation_priseEnChargeExclusive() {
+        SoumissionDossier soumissionA = new SoumissionDossier();
+        soumissionA.setId("soum-a");
+        soumissionA.setDossier(dossier);
+        soumissionA.setAvocat(avocatA);
+        soumissionA.setStatut("EN_ATTENTE");
+        SoumissionDossier soumissionB = new SoumissionDossier();
+        soumissionB.setId("soum-b");
+        soumissionB.setDossier(dossier);
+        soumissionB.setAvocat(avocatB);
+        soumissionB.setStatut("EN_ATTENTE");
+
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(avocatA.getId());
+        when(soumissionDossierRepository.findById("soum-a")).thenReturn(Optional.of(soumissionA));
+        when(dossierRepository.findByIdForUpdate(dossier.getId())).thenReturn(Optional.of(dossier));
+        when(soumissionDossierRepository.save(any(SoumissionDossier.class))).thenAnswer(i -> i.getArgument(0));
+        when(soumissionDossierRepository.findByDossierId(dossier.getId())).thenReturn(List.of(soumissionA, soumissionB));
+
+        RepondreSoumissionRequest request = new RepondreSoumissionRequest();
+        request.setStatut("ACCEPTEE");
+        request.setTarifPropose(new BigDecimal("300000"));
+
+        soumissionDossierService.repondreSoumission("soum-a", request);
+
+        assertThat(dossier.getStatut()).isEqualTo("PRIS_EN_CHARGE");
+        assertThat(soumissionA.getStatut()).isEqualTo("ACCEPTEE");
+        assertThat(soumissionB.getStatut()).isEqualTo("CADUQUE");
+        verify(notificationService).notifier(argThat(n ->
+                n.destinataireId().equals(justiciable.getId()) && n.type().equals("DOSSIER_ACCEPTE")));
+        verify(notificationService).notifier(argThat(n ->
+                n.destinataireId().equals(avocatB.getId()) && n.type().equals("DOSSIER_CADUQUE")));
+    }
+
+    @Test
+    @DisplayName("Refus sans motif : rejeté (le justiciable doit être informé)")
+    void refus_sansMotif_rejete() {
+        SoumissionDossier soumissionA = new SoumissionDossier();
+        soumissionA.setId("soum-a");
+        soumissionA.setDossier(dossier);
+        soumissionA.setAvocat(avocatA);
+        soumissionA.setStatut("EN_ATTENTE");
+
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(avocatA.getId());
+        when(soumissionDossierRepository.findById("soum-a")).thenReturn(Optional.of(soumissionA));
+        when(dossierRepository.findByIdForUpdate(dossier.getId())).thenReturn(Optional.of(dossier));
+
+        RepondreSoumissionRequest request = new RepondreSoumissionRequest();
+        request.setStatut("REFUSEE");
+        request.setReponse("   ");
+
+        assertThatThrownBy(() -> soumissionDossierService.repondreSoumission("soum-a", request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("motif");
+        verify(soumissionDossierRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Une soumission déjà traitée ne peut pas recevoir une seconde réponse")
+    void reponse_dejaTraitee_rejetee() {
+        SoumissionDossier soumissionA = new SoumissionDossier();
+        soumissionA.setId("soum-a");
+        soumissionA.setDossier(dossier);
+        soumissionA.setAvocat(avocatA);
+        soumissionA.setStatut("REFUSEE");
+
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(avocatA.getId());
+        when(soumissionDossierRepository.findById("soum-a")).thenReturn(Optional.of(soumissionA));
+        when(dossierRepository.findByIdForUpdate(dossier.getId())).thenReturn(Optional.of(dossier));
+
+        RepondreSoumissionRequest request = new RepondreSoumissionRequest();
+        request.setStatut("ACCEPTEE");
+        request.setTarifPropose(new BigDecimal("100000"));
+
+        assertThatThrownBy(() -> soumissionDossierService.repondreSoumission("soum-a", request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("déjà répondu");
+    }
+
+    @Test
+    @DisplayName("Un dossier pris en charge ne peut plus être soumis à un autre avocat")
+    void soumission_dossierPrisEnCharge_rejetee() {
+        dossier.setStatut("PRIS_EN_CHARGE");
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(justiciable.getId());
+        when(dossierRepository.findByIdForUpdate(dossier.getId())).thenReturn(Optional.of(dossier));
+
+        SoumissionDossierRequest request = new SoumissionDossierRequest();
+        request.setAvocatId(avocatB.getId());
+
+        assertThatThrownBy(() -> soumissionDossierService.soumettreDossier(dossier.getId(), request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("déjà pris en charge");
+    }
+
+    @Test
+    @DisplayName("Soumission : l'avocat destinataire est notifié")
+    void soumission_notifieLAvocat() {
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(justiciable.getId());
+        when(dossierRepository.findByIdForUpdate(dossier.getId())).thenReturn(Optional.of(dossier));
+        when(avocatRepository.findById(avocatA.getId())).thenReturn(Optional.of(avocatA));
+        when(soumissionDossierRepository.save(any(SoumissionDossier.class))).thenAnswer(i -> {
+            SoumissionDossier s = i.getArgument(0);
+            s.setId("soum-n");
+            return s;
+        });
+
+        SoumissionDossierRequest request = new SoumissionDossierRequest();
+        request.setAvocatId(avocatA.getId());
+        soumissionDossierService.soumettreDossier(dossier.getId(), request);
+
+        verify(notificationService).notifier(argThat(n ->
+                n.destinataireId().equals(avocatA.getId()) && n.type().equals("DOSSIER_RECU")
+                        && "AVOCAT".equals(n.univers())));
     }
 }

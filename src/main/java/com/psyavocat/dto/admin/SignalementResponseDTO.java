@@ -21,4 +21,8 @@ public class SignalementResponseDTO {
     private String statut;
     private String description;
     private LocalDateTime dateSignalement;
+    /** Univers du professionnel visé : AVOCAT ou PSYCHOLOGUE. */
+    private String typeProfessionnel;
+    /** Statut de vérification actuel du professionnel visé. */
+    private String statutProfessionnel;
 }

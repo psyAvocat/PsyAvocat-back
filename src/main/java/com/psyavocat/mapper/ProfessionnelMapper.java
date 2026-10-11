@@ -64,9 +64,15 @@ public class ProfessionnelMapper {
         if (pro.getTarifs() != null) {
             List<TarifProfessionnelDTO> tarifDtos = pro.getTarifs().stream()
                     .filter(t -> Boolean.TRUE.equals(t.getActif()))
-                    .map(t -> new TarifProfessionnelDTO(
-                            t.getId(), t.getTitre(), t.getMontant(), t.getDevise(), t.getDescription(), t.getDureeMinutes()
-                    ))
+                    .map(t -> TarifProfessionnelDTO.builder()
+                            .id(t.getId())
+                            .titre(t.getTitre())
+                            .montant(t.getMontant())
+                            .devise(t.getDevise())
+                            .description(t.getDescription())
+                            .dureeMinutes(t.getDureeMinutes())
+                            .actif(true)
+                            .build())
                     .toList();
             builder.tarifs(tarifDtos);
         } else {

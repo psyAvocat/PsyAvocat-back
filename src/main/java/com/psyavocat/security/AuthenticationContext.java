@@ -1,6 +1,7 @@
 package com.psyavocat.security;
 
 import com.psyavocat.entity.Utilisateur;
+import com.psyavocat.exception.UnauthorizedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -35,7 +36,7 @@ public class AuthenticationContext {
     public String getRequiredFirebaseUid() {
         return getCurrentUser()
                 .map(AuthenticatedUser::getFirebaseUid)
-                .orElseThrow(() -> new IllegalStateException("Aucun utilisateur authentifié dans le contexte de sécurité"));
+                .orElseThrow(() -> new UnauthorizedException("Authentification requise."));
     }
 
     /**

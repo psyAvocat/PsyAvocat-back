@@ -11,6 +11,7 @@ import com.psyavocat.repository.JustificatifProfessionnelRepository;
 import com.psyavocat.repository.UtilisateurRepository;
 import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.JustificatifService;
+import com.psyavocat.service.support.AccesProfessionnel;
 import com.psyavocat.storage.model.StoredDocument;
 import com.psyavocat.storage.service.DocumentStorageService;
 import org.slf4j.Logger;
@@ -44,18 +45,27 @@ public class JustificatifServiceImpl implements JustificatifService {
     private final UtilisateurRepository utilisateurRepository;
     private final AuthenticationContext authenticationContext;
     private final DocumentStorageService documentStorageService;
+    private final AccesProfessionnel accesProfessionnel;
+    private final com.psyavocat.service.NotificationService notificationService;
+    private final com.psyavocat.service.support.JournalDecisions journalDecisions;
     private final Path fileStorageLocation;
 
     public JustificatifServiceImpl(
             JustificatifProfessionnelRepository justificatifRepository,
             UtilisateurRepository utilisateurRepository,
             AuthenticationContext authenticationContext,
-            DocumentStorageService documentStorageService
+            DocumentStorageService documentStorageService,
+            AccesProfessionnel accesProfessionnel,
+            com.psyavocat.service.NotificationService notificationService,
+            com.psyavocat.service.support.JournalDecisions journalDecisions
     ) {
         this.justificatifRepository = justificatifRepository;
         this.utilisateurRepository = utilisateurRepository;
         this.authenticationContext = authenticationContext;
         this.documentStorageService = documentStorageService;
+        this.accesProfessionnel = accesProfessionnel;
+        this.notificationService = notificationService;
+        this.journalDecisions = journalDecisions;
         this.fileStorageLocation = Paths.get("uploads/justificatifs").toAbsolutePath().normalize();
 
         try {
@@ -67,13 +77,8 @@ public class JustificatifServiceImpl implements JustificatifService {
 
     @Override
     public JustificatifResponseDTO uploadJustificatif(MultipartFile file, String typeDocument) {
-        String uid = authenticationContext.getRequiredFirebaseUid();
-        Utilisateur utilisateur = utilisateurRepository.findById(uid)
-                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
-
-        if (!(utilisateur instanceof Professionnel professionnel)) {
-            throw new BadRequestException("Seul un professionnel peut uploader un justificatif.");
-        }
+        // Dépôt ouvert aux comptes en attente de vérification et approuvés uniquement.
+        Professionnel professionnel = accesProfessionnel.exigerParcoursVerificationOuvert();
 
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Fichier manquant ou vide.");
@@ -188,6 +193,13 @@ public class JustificatifServiceImpl implements JustificatifService {
                 .orElseThrow(() -> new ResourceNotFoundException("Justificatif introuvable"));
 
         verifierAccesDocument(justif);
+        if (!estAdministrateur()) {
+            accesProfessionnel.exigerParcoursVerificationOuvert();
+            // Un justificatif déjà validé par l'administration fait foi : il n'est plus retirable.
+            if ("VALIDE".equalsIgnoreCase(justif.getStatutValidation())) {
+                throw new ForbiddenException("Ce justificatif a été validé par l'administration et ne peut plus être supprimé.");
+            }
+        }
 
         // Suppression de R2 si présent
         if (justif.getCleObjet() != null && !justif.getCleObjet().isBlank() && documentStorageService.isAvailable()) {
@@ -208,12 +220,43 @@ public class JustificatifServiceImpl implements JustificatifService {
 
     private void verifierAccesDocument(JustificatifProfessionnel justif) {
         String uid = authenticationContext.getRequiredFirebaseUid();
-        boolean isAdmin = authenticationContext.getCurrentAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRATEUR"));
-
-        if (!isAdmin && !justif.getProfessionnel().getId().equals(uid)) {
+        if (!estAdministrateur() && !justif.getProfessionnel().getId().equals(uid)) {
             throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à ce document.");
         }
+    }
+
+    @Override
+    public JustificatifResponseDTO decider(String id, String statut, String motif) {
+        if (!estAdministrateur()) {
+            throw new ForbiddenException("Seule l'administration peut valider un justificatif.");
+        }
+        String decision = statut != null ? statut.trim().toUpperCase() : "";
+        if (!"VALIDE".equals(decision) && !"REJETE".equals(decision)) {
+            throw new BadRequestException("Décision invalide (VALIDE ou REJETE).");
+        }
+        String motifNettoye = motif != null && !motif.isBlank() ? motif.trim() : null;
+        if ("REJETE".equals(decision) && motifNettoye == null) {
+            throw new BadRequestException("Le motif est obligatoire pour rejeter un justificatif.");
+        }
+        JustificatifProfessionnel justif = justificatifRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Justificatif introuvable"));
+        justif.setStatutValidation(decision);
+        JustificatifProfessionnel saved = justificatifRepository.save(justif);
+        journalDecisions.enregistrer(com.psyavocat.service.support.JournalDecisions.TYPE_JUSTIFICATIF,
+                saved.getId(), decision, motifNettoye);
+        notificationService.sendNotification(saved.getProfessionnel().getId(),
+                "VALIDE".equals(decision) ? "JUSTIFICATIF_VALIDE" : "JUSTIFICATIF_REJETE",
+                "VALIDE".equals(decision)
+                        ? "Votre justificatif « " + saved.getNomFichier() + " » a été validé."
+                        : "Votre justificatif « " + saved.getNomFichier() + " » a été refusé. Motif : " + motifNettoye
+                                + ". Vous pouvez déposer un nouveau document depuis votre profil.",
+                null);
+        return mapToDto(saved);
+    }
+
+    private boolean estAdministrateur() {
+        return authenticationContext.getCurrentAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRATEUR"));
     }
 
     private JustificatifResponseDTO mapToDto(JustificatifProfessionnel justif) {

@@ -178,6 +178,8 @@ Lors de la première inscription Firebase, l'utilisateur choisit son rôle méti
   ```
   * Règle métier : Le rendez-vous ne peut être pris que si la soumission de dossier est en statut `ACCEPTEE`. L'acompte de 20% est calculé sur le `tarifPropose` de l'avocat.
 
+  * La réservation directe d'un avocat (`/api/rendez-vous/avocat/direct`) a été **retirée** : elle contournait le workflow dossier → acceptation → rendez-vous.
+
 * `GET /api/rendez-vous` : Liste des rendez-vous de l'utilisateur connecté (patient/justiciable ou professionnel).
 * `PATCH /api/rendez-vous/{id}/annuler` : Annulation du rendez-vous (libère le créneau).
 
@@ -200,8 +202,10 @@ Lors de la première inscription Firebase, l'utilisateur choisit son rôle méti
     "avocatId": "avocat-uid-789"
   }
   ```
-* `GET /api/avocat/soumissions` (`ROLE_AVOCAT`) : Dossiers reçus par l'avocat connecté.
-* `PATCH /api/avocat/soumissions/{id}/repondre` (`ROLE_AVOCAT`) :
+* `POST /api/dossiers/{id}/pieces-jointes` (multipart `file`) : dépôt d'une pièce par le propriétaire (bucket privé `psyavocat-documents`, PDF/JPG/PNG/DOC/DOCX, 10 Mo, 10 pièces max). Les pièces sont renvoyées dans le détail du dossier avec un lien temporaire (15 min).
+* `DELETE /api/dossiers/{id}/pieces-jointes/{pieceJointeId}` : retrait par le propriétaire tant que le dossier n'est pas pris en charge.
+* `GET /api/avocat/soumissions` (`ROLE_AVOCAT`, compte `APPROVED`) : Dossiers reçus par l'avocat connecté.
+* `PATCH /api/avocat/soumissions/{id}/repondre` (`ROLE_AVOCAT`, compte `APPROVED`) — une seule réponse par soumission ; `ACCEPTEE` exige `tarifPropose > 0` et **prend en charge le dossier en exclusivité** (dossier `PRIS_EN_CHARGE`, autres soumissions `CADUQUE`) ; `REFUSEE` exige un motif (`reponse`). Le justiciable est notifié :
   ```json
   {
     "statut": "ACCEPTEE", // ou "REFUSEE"
@@ -234,3 +238,29 @@ Lors de la première inscription Firebase, l'utilisateur choisit son rôle méti
 
 * `GET /api/orientation/questionnaires` : Liste des questionnaires actifs avec questions et réponses.
 * `POST /api/orientation/soumettre` : Soumission des réponses -> Calcul du score et recommandation de la `CategorieBesoin`.
+
+---
+
+## 11. Tarifs professionnels (V1)
+
+* `GET /api/professionnel/tarifs` (`ROLE_PROFESSIONNEL`) : tous les tarifs du professionnel connecté.
+* `POST /api/professionnel/tarifs` / `PUT /api/professionnel/tarifs/{id}` : `{ "titre", "montant" (FCFA > 0), "description", "dureeMinutes", "actif" }` — compte `PENDING` ou `APPROVED`.
+* `PATCH /api/professionnel/tarifs/{id}/actif?actif=true|false` : publication / retrait.
+* `DELETE /api/professionnel/tarifs/{id}` : les rendez-vous déjà réservés conservent leur montant.
+* Seuls les tarifs publiés figurent dans `GET /api/professionnels/{id}` ; la réservation psychologue exige un montant égal à un tarif publié.
+
+## 12. Paiements simulés (V1)
+
+* `GET /api/paiements` (client) : acomptes de 20 % (`simulation: true`, aucune transaction réelle). Statut `PAYE`, ou `ANNULE` si le rendez-vous est annulé.
+
+## 13. Orientation psychologique
+
+* Seuls les questionnaires `PSYCHOLOGIQUE` actifs sont servis (aucun repli sur un questionnaire inactif, aucun questionnaire juridique). Publier un questionnaire retire le précédent de la publication.
+* Les questions / réponses désactivées (`PATCH /api/admin/orientation/questions/{id}/actif`, `/reponses/{id}/actif`) ne sont plus proposées ; une soumission qui les utilise est refusée (400).
+* Les pondérations ne sont jamais exposées aux clients.
+* `ResultatOrientationDTO.etatRecommandation` : `PROFESSIONNELS_TROUVES` ou `AUCUN_PROFESSIONNEL_DISPONIBLE` (liste vide, aucun repli).
+
+## 14. Référentiels
+
+* `typeProfessionnel` (`AVOCAT` | `PSYCHOLOGUE`) est obligatoire et validé sur les domaines, spécialités et catégories de besoin ; une spécialité appartient au même univers que son domaine et ses catégories. Il n'est jamais déduit d'un libellé.
+* Une spécialité utilisée (professionnels, orientation, publications, dossiers) ne peut pas être supprimée (409).

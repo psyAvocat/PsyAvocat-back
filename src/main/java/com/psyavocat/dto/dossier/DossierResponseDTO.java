@@ -21,6 +21,8 @@ public class DossierResponseDTO {
     private String description;
     private LocalDate dateOuverture;
     private String statut;
+    private String specialiteId;
+    private String specialiteNom;
     private String justiciableId;
 
     private List<PieceJointeDTO> piecesJointes;

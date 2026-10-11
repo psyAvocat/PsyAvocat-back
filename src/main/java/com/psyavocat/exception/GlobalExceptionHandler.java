@@ -28,6 +28,7 @@ public class GlobalExceptionHandler {
                 .status(ex.getStatus().value())
                 .error(ex.getStatus().getReasonPhrase())
                 .message(ex.getMessage())
+                .code(ex.getCode())
                 .path(request.getRequestURI())
                 .build();
         return ResponseEntity.status(ex.getStatus()).body(response);
@@ -110,6 +111,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleConflitConcurrent(Exception ex, HttpServletRequest request) {
         log.warn("Conflit de données sur {} : {}", request.getRequestURI(), ex.getMessage());
         return reponse(HttpStatus.CONFLICT, "Cette opération est en conflit avec une modification simultanée. Veuillez réessayer.", request);
+    }
+
+    /** Route inexistante (ou retirée) : 404 explicite, jamais une erreur 500. */
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleRouteInconnue(Exception ex, HttpServletRequest request) {
+        return reponse(HttpStatus.NOT_FOUND, "Ressource introuvable.", request);
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiErrorResponse> handleMethodeNonSupportee(Exception ex, HttpServletRequest request) {
+        return reponse(HttpStatus.METHOD_NOT_ALLOWED, "Méthode non autorisée pour cette ressource.", request);
     }
 
     private ResponseEntity<ApiErrorResponse> reponse(HttpStatus status, String message, HttpServletRequest request) {

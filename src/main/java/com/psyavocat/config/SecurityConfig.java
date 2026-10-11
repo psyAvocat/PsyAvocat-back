@@ -76,6 +76,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/orientation/questionnaires/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/questionnaires/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/orientation/evaluer").permitAll()
+                        // Espace personnel du professionnel : jamais public (avant la règle du catalogue)
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/professionnels/clients", "/api/professionnels/stats",
+                                "/api/professionnel/clients", "/api/professionnel/stats").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/professionnels/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/disponibilites/professionnel/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/referentiels", "/api/referentiels/**").permitAll()

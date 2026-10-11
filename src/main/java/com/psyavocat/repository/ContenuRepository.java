@@ -27,6 +27,8 @@ public interface ContenuRepository extends JpaRepository<Contenu, String> {
 
     List<Contenu> findByAuteurIdOrderByDatePublicationDesc(String auteurId);
 
+    boolean existsBySpecialiteId(String specialiteId);
+
     @Modifying
     @Query("UPDATE Contenu c SET c.nombreVues = COALESCE(c.nombreVues, 0) + 1 WHERE c.id = :id")
     void incrementerVues(@Param("id") String id);

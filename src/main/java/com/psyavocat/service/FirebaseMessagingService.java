@@ -66,7 +66,10 @@ public class FirebaseMessagingService {
             log.info("Notification FCM envoyée avec succès, message ID : {}", response);
             return response;
         } catch (FirebaseMessagingException e) {
-            log.error("Échec de l'envoi de la notification FCM au token {} : {}", targetToken, e.getMessage());
+            // Le jeton d'appareil n'est jamais journalisé en clair.
+            log.error("Échec de l'envoi de la notification FCM (appareil …{}) : {}",
+                    targetToken != null && targetToken.length() > 6 ? targetToken.substring(targetToken.length() - 6) : "?",
+                    e.getMessage());
             return null;
         }
     }

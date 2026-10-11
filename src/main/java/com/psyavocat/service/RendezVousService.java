@@ -1,6 +1,5 @@
 package com.psyavocat.service;
 
-import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatDirectRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousPsyRequest;
 import com.psyavocat.dto.rendezvous.ModifierCreneauRequest;
@@ -29,11 +28,6 @@ public interface RendezVousService {
      * Réservation directe d'un rendez-vous avec un avocat suite à l'acceptation d'une soumission de dossier.
      */
     RendezVousResponseDTO createRendezVousAvocat(CreateRendezVousAvocatRequest request);
-
-    /**
-     * Réservation directe d'une consultation avec un avocat.
-     */
-    RendezVousResponseDTO createRendezVousAvocatDirect(CreateRendezVousAvocatDirectRequest request);
 
     /**
      * Récupère la liste des rendez-vous de l'utilisateur authentifié (patient ou professionnel).

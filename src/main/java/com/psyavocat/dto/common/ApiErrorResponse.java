@@ -27,6 +27,8 @@ public class ApiErrorResponse {
     private String error;
 
     private String message;
+    /** Code fonctionnel facultatif (ex. PROFESSIONAL_NOT_APPROVED). */
+    private String code;
 
     private String path;
 

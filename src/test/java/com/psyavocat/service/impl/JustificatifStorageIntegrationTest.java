@@ -44,7 +44,10 @@ class JustificatifStorageIntegrationTest {
                 justificatifRepository,
                 utilisateurRepository,
                 authenticationContext,
-                documentStorageService
+                documentStorageService,
+                new com.psyavocat.service.support.AccesProfessionnel(authenticationContext, utilisateurRepository),
+                mock(com.psyavocat.service.NotificationService.class),
+                mock(com.psyavocat.service.support.JournalDecisions.class)
         );
 
         pro1 = new Avocat();

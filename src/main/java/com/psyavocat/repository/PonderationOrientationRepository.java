@@ -12,4 +12,6 @@ public interface PonderationOrientationRepository extends JpaRepository<Ponderat
     List<PonderationOrientation> findByReponseIdIn(List<String> reponseIds);
     boolean existsByReponseIdAndCategorieBesoinId(String reponseId, String categorieBesoinId);
     boolean existsByReponseIdAndSpecialiteId(String reponseId, String specialiteId);
+
+    boolean existsBySpecialiteId(String specialiteId);
 }

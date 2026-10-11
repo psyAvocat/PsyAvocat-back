@@ -14,6 +14,16 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 
+/**
+ * Création idempotente de l'administrateur initial au démarrage.
+ *
+ * Règles de sécurité :
+ * - l'UID Firebase et l'e-mail proviennent de la configuration locale (.env), jamais du code ;
+ * - aucun compte existant n'est jamais supprimé ni transformé : en cas de conflit
+ *   (UID déjà utilisé par un autre type de compte, e-mail déjà pris), le bootstrap s'arrête
+ *   et le signale pour une intervention manuelle ;
+ * - rien n'est fait si l'administrateur existe déjà.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -25,10 +35,10 @@ public class AdminBootstrapService implements ApplicationRunner {
     @Value("${psyavocat.admin.bootstrap.enabled:true}")
     private boolean bootstrapEnabled;
 
-    @Value("${psyavocat.admin.firebase-uid:aW1omdSLFBWOQl9TAaSwPNrLDeF3}")
+    @Value("${psyavocat.admin.firebase-uid:}")
     private String adminFirebaseUid;
 
-    @Value("${psyavocat.admin.email:admin@psyavocat.com}")
+    @Value("${psyavocat.admin.email:}")
     private String adminEmail;
 
     @Value("${psyavocat.admin.nom:admin}")
@@ -41,30 +51,29 @@ public class AdminBootstrapService implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         if (!bootstrapEnabled) {
-            log.info("[AdminBootstrap] Bootstrap admin désactivé (psyavocat.admin.bootstrap.enabled=false).");
+            log.info("[AdminBootstrap] Bootstrap administrateur désactivé.");
             return;
         }
-
         if (!StringUtils.hasText(adminFirebaseUid) || !StringUtils.hasText(adminEmail)) {
-            log.warn("[AdminBootstrap] UID Firebase ou Email admin non renseigné. Abandon du bootstrap.");
+            log.warn("[AdminBootstrap] PSYAVOCAT_ADMIN_FIREBASE_UID ou PSYAVOCAT_ADMIN_EMAIL non renseigné : aucun administrateur initial créé.");
             return;
         }
 
-        // Si l'administrateur avec cet UID exact existe déjà
         if (administrateurRepository.existsById(adminFirebaseUid)) {
-            log.info("[AdminBootstrap] L'administrateur avec l'UID '{}' existe déjà en base. Aucune action.", adminFirebaseUid);
+            log.info("[AdminBootstrap] Administrateur initial déjà présent : aucune action.");
+            return;
+        }
+        if (utilisateurRepository.existsById(adminFirebaseUid)) {
+            log.error("[AdminBootstrap] L'UID configuré appartient déjà à un compte non administrateur : "
+                    + "aucune modification automatique. Vérifiez la configuration.");
+            return;
+        }
+        if (utilisateurRepository.findByEmail(adminEmail).isPresent()) {
+            log.error("[AdminBootstrap] L'e-mail administrateur configuré est déjà associé à un autre compte : "
+                    + "aucune suppression ni modification automatique. Intervention manuelle requise.");
             return;
         }
 
-        // Si un compte avec cet email existe déjà avec un ancien ou différent UID
-        utilisateurRepository.findByEmail(adminEmail).ifPresent(existingUser -> {
-            log.warn("[AdminBootstrap] Un compte avec l'email '{}' existe déjà avec l'ancien UID '{}'. Remplacement pour associer le vrai UID Firebase...",
-                    adminEmail, existingUser.getId());
-            utilisateurRepository.delete(existingUser);
-            utilisateurRepository.flush();
-        });
-
-        // Création de l'administrateur initial avec le vrai UID Firebase
         Administrateur admin = new Administrateur();
         admin.setId(adminFirebaseUid);
         admin.setEmail(adminEmail);
@@ -72,10 +81,7 @@ public class AdminBootstrapService implements ApplicationRunner {
         admin.setPrenom(StringUtils.hasText(adminPrenom) ? adminPrenom : "admin");
         admin.setActif(true);
         admin.setDateInscription(LocalDate.now());
-
         administrateurRepository.save(admin);
-        log.info("[AdminBootstrap] ✅ Administrateur initialisé avec succès ! UID Firebase: '{}', Email: '{}', Nom: '{}', Prénom: '{}'.",
-                adminFirebaseUid, adminEmail, admin.getNom(), admin.getPrenom());
+        log.info("[AdminBootstrap] Administrateur initial créé.");
     }
 }
-

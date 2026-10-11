@@ -24,6 +24,11 @@ public class Domaine {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @OneToMany(mappedBy = "domaine", cascade = CascadeType.ALL)
+    /** Univers du domaine (AVOCAT ou PSYCHOLOGUE) : ses spécialités appartiennent au même univers. */
+    @Column(name = "type_professionnel")
+    private String typeProfessionnel;
+
+    // Aucune cascade : un domaine n'est supprimable que sans spécialité rattachée.
+    @OneToMany(mappedBy = "domaine")
     private List<Specialite> specialites = new ArrayList<>();
 }

@@ -18,5 +18,6 @@ public class ReponseDTO {
     private String valeur;
     private Integer poids;
     private String questionId;
+    private Boolean actif;
     private List<PonderationDTO> ponderations;
 }

@@ -30,6 +30,9 @@ public interface ProfessionnelService {
 
     List<ProfessionnelResponseDTO> getProfessionnelsEnAttente();
 
+    /** Administration : tous les professionnels, éventuellement filtrés par statut. */
+    List<ProfessionnelResponseDTO> getProfessionnelsAdmin(String statut);
+
     ProfessionnelResponseDTO updateStatutValidation(String id, String nouveauStatut);
     ProfessionnelResponseDTO updateStatutValidation(String id, String nouveauStatut, String motif);
 }

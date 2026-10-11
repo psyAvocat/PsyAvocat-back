@@ -29,6 +29,11 @@ public class Dossier {
 
     private String statut;
 
+    /** Domaine juridique du dossier : spécialité du référentiel (univers Avocat), facultative. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "specialite_id")
+    private Specialite specialite;
+
     /**
      * Client propriétaire : profil client unifié ({@link Client}) ou ancien {@link Justiciable}.
      * Typé {@link Utilisateur} pour accepter les deux (voir ClientAccountMigration).

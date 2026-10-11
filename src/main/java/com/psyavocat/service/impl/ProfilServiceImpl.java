@@ -108,8 +108,8 @@ public class ProfilServiceImpl implements ProfilService {
                 if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
                     List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
                     for (Specialite s : specialites) {
-                        String resolved = s.resolveTypeProfessionnel();
-                        if ("PSYCHOLOGUE".equalsIgnoreCase(resolved)) {
+                        // Type enregistré par l\'administration (jamais déduit du libellé).
+                        if (!com.psyavocat.service.support.TypesProfessionnel.AVOCAT.equals(com.psyavocat.service.support.TypesProfessionnel.typeDe(s))) {
                             throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un avocat.");
                         }
                     }
@@ -139,8 +139,8 @@ public class ProfilServiceImpl implements ProfilService {
         if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
             List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
             for (Specialite s : specialites) {
-                String resolved = s.resolveTypeProfessionnel();
-                if ("PSYCHOLOGUE".equalsIgnoreCase(resolved)) {
+                // Type enregistré par l\'administration (jamais déduit du libellé).
+                if (!com.psyavocat.service.support.TypesProfessionnel.AVOCAT.equals(com.psyavocat.service.support.TypesProfessionnel.typeDe(s))) {
                     throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un avocat.");
                 }
             }
@@ -181,8 +181,8 @@ public class ProfilServiceImpl implements ProfilService {
                 if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
                     List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
                     for (Specialite s : specialites) {
-                        String resolved = s.resolveTypeProfessionnel();
-                        if ("AVOCAT".equalsIgnoreCase(resolved)) {
+                        // Type enregistré par l\'administration (jamais déduit du libellé).
+                        if (!com.psyavocat.service.support.TypesProfessionnel.PSYCHOLOGUE.equals(com.psyavocat.service.support.TypesProfessionnel.typeDe(s))) {
                             throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un psychologue.");
                         }
                     }
@@ -212,8 +212,8 @@ public class ProfilServiceImpl implements ProfilService {
         if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
             List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
             for (Specialite s : specialites) {
-                String resolved = s.resolveTypeProfessionnel();
-                if ("AVOCAT".equalsIgnoreCase(resolved)) {
+                // Type enregistré par l\'administration (jamais déduit du libellé).
+                if (!com.psyavocat.service.support.TypesProfessionnel.PSYCHOLOGUE.equals(com.psyavocat.service.support.TypesProfessionnel.typeDe(s))) {
                     throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un psychologue.");
                 }
             }
@@ -426,7 +426,7 @@ public class ProfilServiceImpl implements ProfilService {
 
     private AuthenticatedUser getAuthenticatedUserOrThrow() {
         return authenticationContext.getCurrentUser()
-                .orElseThrow(() -> new IllegalStateException("Aucun utilisateur authentifié"));
+                .orElseThrow(() -> new com.psyavocat.exception.UnauthorizedException("Authentification requise."));
     }
 
     private void checkIfProfileAlreadyExists(String uid) {

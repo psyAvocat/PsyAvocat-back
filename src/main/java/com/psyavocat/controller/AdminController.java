@@ -52,6 +52,13 @@ public class AdminController {
         return ResponseEntity.ok(adminStatistiquesService.getStatistiquesDetaillees(mois));
     }
 
+    /** Tous les professionnels (tous statuts), filtrables par statut de vérification. */
+    @GetMapping("/professionnels")
+    public ResponseEntity<List<ProfessionnelResponseDTO>> getProfessionnels(
+            @RequestParam(name = "statut", required = false) String statut) {
+        return ResponseEntity.ok(professionnelService.getProfessionnelsAdmin(statut));
+    }
+
     @GetMapping("/professionnels/en-attente")
     public ResponseEntity<List<ProfessionnelResponseDTO>> getProfessionnelsEnAttente() {
         return ResponseEntity.ok(professionnelService.getProfessionnelsEnAttente());
@@ -78,15 +85,27 @@ public class AdminController {
     }
 
 
+    /** Signalements ; sans filtre : en attente (comportement historique). statut=TOUS : tous. */
     @GetMapping("/signalements")
-    public ResponseEntity<List<com.psyavocat.dto.admin.SignalementResponseDTO>> getSignalementsActifs() {
-        return ResponseEntity.ok(adminService.getSignalementsActifs());
+    public ResponseEntity<List<com.psyavocat.dto.admin.SignalementResponseDTO>> getSignalements(
+            @RequestParam(name = "statut", required = false) String statut) {
+        if (statut == null || statut.isBlank()) {
+            return ResponseEntity.ok(adminService.getSignalementsActifs());
+        }
+        return ResponseEntity.ok(adminService.getSignalements("TOUS".equalsIgnoreCase(statut) ? null : statut));
+    }
+
+    /** Historique des décisions administratives concernant un professionnel, un signalement ou un justificatif. */
+    @GetMapping("/decisions/{cibleId}")
+    public ResponseEntity<List<com.psyavocat.dto.admin.DecisionAdministrativeDTO>> getHistoriqueDecisions(
+            @PathVariable String cibleId) {
+        return ResponseEntity.ok(adminService.getHistoriqueDecisions(cibleId));
     }
 
     @PatchMapping("/signalements/{id}/statut")
     public ResponseEntity<com.psyavocat.dto.admin.SignalementResponseDTO> traiterSignalement(
             @PathVariable String id,
             @RequestBody com.psyavocat.dto.admin.ActionSignalementRequest request) {
-        return ResponseEntity.ok(adminService.traiterSignalement(id, request.getAction()));
+        return ResponseEntity.ok(adminService.traiterSignalement(id, request.getAction(), request.getMotif()));
     }
 }

@@ -18,4 +18,6 @@ public class TarifProfessionnelDTO {
     private String devise;
     private String description;
     private Integer dureeMinutes;
+    /** Publié (visible des clients) ; seuls les tarifs publiés figurent sur la fiche publique. */
+    private Boolean actif;
 }

@@ -16,6 +16,10 @@ public interface RendezVousRepository extends JpaRepository<RendezVous, String> 
 
     List<RendezVous> findByProfessionnelIdOrderByDateHeureDesc(String professionnelId);
 
+    /** Existe-t-il au moins un rendez-vous entre ce professionnel et ce client ? */
+    @Query("SELECT COUNT(r) > 0 FROM RendezVous r WHERE r.professionnel.id = :proId AND r.client.id = :patientId")
+    boolean existsByProfessionnelIdAndPatientId(@Param("proId") String professionnelId, @Param("patientId") String patientId);
+
     /** Rendez-vous d'un statut donné dont le début est dans [debut, fin[ (rappels planifiés). */
     List<RendezVous> findByStatutAndDateHeureGreaterThanEqualAndDateHeureLessThan(
             String statut, LocalDateTime debut, LocalDateTime fin);

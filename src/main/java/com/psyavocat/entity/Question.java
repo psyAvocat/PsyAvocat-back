@@ -30,6 +30,9 @@ public class Question {
     @Column(name = "contexte")
     private String contexte;
 
+    /** Question désactivée : plus proposée aux nouveaux répondants (l'historique est conservé). */
+    private Boolean actif = true;
+
     @Column(name = "type_reponse")
     private String typeReponse = "CHOIX_UNIQUE";
 

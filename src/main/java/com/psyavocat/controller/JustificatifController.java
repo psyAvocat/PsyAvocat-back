@@ -60,6 +60,14 @@ public class JustificatifController {
         return ResponseEntity.ok(java.util.Map.of("url", presignedUrl));
     }
 
+    /** Décision de l'administration : {"statut": "VALIDE" | "REJETE", "motif": "..."}. */
+    @PatchMapping("/{id}/statut")
+    @PreAuthorize("hasRole('ADMINISTRATEUR')")
+    public ResponseEntity<JustificatifResponseDTO> decider(@PathVariable String id,
+                                                          @RequestBody java.util.Map<String, String> body) {
+        return ResponseEntity.ok(justificatifService.decider(id, body.get("statut"), body.get("motif")));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteJustificatif(@PathVariable String id) {
         justificatifService.deleteJustificatif(id);

@@ -19,5 +19,6 @@ public class QuestionDTO {
     private Boolean obligatoire;
     private String contexte;
     private String typeReponse;
+    private Boolean actif;
     private List<ReponseDTO> reponses;
 }

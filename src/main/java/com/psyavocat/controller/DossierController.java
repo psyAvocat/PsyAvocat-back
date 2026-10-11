@@ -49,6 +49,20 @@ public class DossierController {
         return ResponseEntity.status(HttpStatus.CREATED).body(soumissionDossierService.soumettreDossier(id, request));
     }
 
+    @PostMapping(value = "/dossiers/{id}/pieces-jointes", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<PieceJointeDTO> ajouterPieceJointe(
+            @PathVariable String id,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(dossierService.ajouterPieceJointe(id, file));
+    }
+
+    @DeleteMapping("/dossiers/{id}/pieces-jointes/{pieceJointeId}")
+    public ResponseEntity<Void> supprimerPieceJointe(@PathVariable String id, @PathVariable String pieceJointeId) {
+        dossierService.supprimerPieceJointe(id, pieceJointeId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/avocat/soumissions")
     @PreAuthorize("hasRole('AVOCAT')")
     public ResponseEntity<List<SoumissionDossierResponseDTO>> getSoumissionsPourAvocat(

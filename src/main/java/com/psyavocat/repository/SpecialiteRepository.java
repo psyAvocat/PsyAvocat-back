@@ -12,4 +12,11 @@ public interface SpecialiteRepository extends JpaRepository<Specialite, String> 
     boolean existsByNomIgnoreCase(String nom);
     long countByDomaineId(String domaineId);
 
+    /** Nombre de professionnels rattachés à la spécialité. */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT COUNT(p) FROM Professionnel p JOIN p.specialites s WHERE s.id = :id")
+    long countProfessionnels(@org.springframework.data.repository.query.Param("id") String specialiteId);
+
+    java.util.List<Specialite> findByTypeProfessionnel(String typeProfessionnel);
+
 }

@@ -10,6 +10,10 @@ import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.exception.ForbiddenException;
 import com.psyavocat.exception.ResourceNotFoundException;
 import com.psyavocat.repository.ConversationRepository;
+import com.psyavocat.repository.FichePatientRepository;
+import com.psyavocat.repository.RendezVousRepository;
+import com.psyavocat.repository.SoumissionDossierRepository;
+import com.psyavocat.service.support.AccesProfessionnel;
 import com.psyavocat.repository.MessageContactRepository;
 import com.psyavocat.repository.UtilisateurRepository;
 import com.psyavocat.security.AuthenticationContext;
@@ -38,6 +42,10 @@ public class MessagerieServiceImpl implements MessagerieService {
     private final NotificationService notificationService;
     private final RealtimeGateway realtimeGateway;
     private final MediaUrlResolver mediaUrlResolver;
+    private final AccesProfessionnel accesProfessionnel;
+    private final RendezVousRepository rendezVousRepository;
+    private final SoumissionDossierRepository soumissionDossierRepository;
+    private final FichePatientRepository fichePatientRepository;
 
     public MessagerieServiceImpl(
             ConversationRepository conversationRepository,
@@ -46,7 +54,11 @@ public class MessagerieServiceImpl implements MessagerieService {
             AuthenticationContext authenticationContext,
             NotificationService notificationService,
             RealtimeGateway realtimeGateway,
-            MediaUrlResolver mediaUrlResolver
+            MediaUrlResolver mediaUrlResolver,
+            AccesProfessionnel accesProfessionnel,
+            RendezVousRepository rendezVousRepository,
+            SoumissionDossierRepository soumissionDossierRepository,
+            FichePatientRepository fichePatientRepository
     ) {
         this.conversationRepository = conversationRepository;
         this.messageContactRepository = messageContactRepository;
@@ -55,6 +67,10 @@ public class MessagerieServiceImpl implements MessagerieService {
         this.notificationService = notificationService;
         this.realtimeGateway = realtimeGateway;
         this.mediaUrlResolver = mediaUrlResolver;
+        this.accesProfessionnel = accesProfessionnel;
+        this.rendezVousRepository = rendezVousRepository;
+        this.soumissionDossierRepository = soumissionDossierRepository;
+        this.fichePatientRepository = fichePatientRepository;
     }
 
     @Override
@@ -151,6 +167,13 @@ public class MessagerieServiceImpl implements MessagerieService {
         Utilisateur expediteur = utilisateurRepository.findById(uid)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
 
+        // Les droits sont revérifiés à chaque envoi (statut ou relation ayant pu changer).
+        for (Utilisateur participant : conv.getParticipants()) {
+            if (!participant.getId().equals(uid)) {
+                verifierDestinataireAutorise(expediteur, participant);
+            }
+        }
+
         MessageContact message = new MessageContact();
         message.setConversation(conv);
         message.setExpediteur(expediteur);
@@ -171,7 +194,10 @@ public class MessagerieServiceImpl implements MessagerieService {
     }
 
     /**
-     * Un client ne peut écrire qu'à un professionnel validé et actif ; personne ne s'écrit à soi-même.
+     * Règles d'échange :
+     * - un client écrit uniquement à un professionnel approuvé et actif ;
+     * - un professionnel approuvé écrit uniquement à SES clients (rendez-vous, dossier reçu ou fiche patient) ;
+     * - toute autre combinaison (administrateur, professionnel à professionnel, soi-même) est refusée.
      */
     private void verifierDestinataireAutorise(Utilisateur expediteur, Utilisateur destinataire) {
         if (expediteur.getId().equals(destinataire.getId())) {
@@ -181,10 +207,33 @@ public class MessagerieServiceImpl implements MessagerieService {
             throw new BadRequestException("Ce destinataire n'est plus disponible");
         }
         if (ClientAccounts.isClient(expediteur)) {
-            if (!(destinataire instanceof Professionnel pro) || !"APPROVED".equalsIgnoreCase(pro.getStatutValidation())) {
+            if (!(destinataire instanceof Professionnel pro) || !AccesProfessionnel.estApprouve(pro)) {
                 throw new ForbiddenException("Vous ne pouvez contacter qu'un professionnel validé");
             }
+            return;
         }
+        if (expediteur instanceof Professionnel pro) {
+            accesProfessionnel.verifierApprouve(pro);
+            if (!ClientAccounts.isClient(destinataire) || !estClientDe(pro, destinataire)) {
+                throw new ForbiddenException("Vous ne pouvez écrire qu'à vos propres clients");
+            }
+            return;
+        }
+        throw new ForbiddenException("La messagerie est réservée aux échanges entre clients et professionnels");
+    }
+
+    /** Relation réelle entre le professionnel et le client. */
+    private boolean estClientDe(Professionnel pro, Utilisateur client) {
+        if (rendezVousRepository.existsByProfessionnelIdAndPatientId(pro.getId(), client.getId())) {
+            return true;
+        }
+        if (pro instanceof Avocat) {
+            return soumissionDossierRepository.existsByAvocatIdAndDossierJusticiableId(pro.getId(), client.getId());
+        }
+        if (pro instanceof Psychologue) {
+            return fichePatientRepository.findByPsychologueIdAndPatientId(pro.getId(), client.getId()).isPresent();
+        }
+        return false;
     }
 
     /**

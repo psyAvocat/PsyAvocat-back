@@ -70,6 +70,9 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
         return toQuestionnaireDTO(q);
     }
 
+    /** Seule l'orientation psychologique est proposée (aucun questionnaire juridique en V1). */
+    static final String TYPE_PSYCHOLOGIQUE = "PSYCHOLOGIQUE";
+
     @Override
     public QuestionnaireDTO createQuestionnaire(QuestionnaireCreateRequest request) {
         if (StringUtils.hasText(request.getCode()) && questionnaireRepository.existsByCode(request.getCode())) {
@@ -78,9 +81,12 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
         Questionnaire q = new Questionnaire();
         q.setTitre(request.getTitre().trim());
         q.setCode(StringUtils.hasText(request.getCode()) ? request.getCode().trim().toUpperCase() : null);
-        q.setType(request.getType().trim().toUpperCase());
+        q.setType(typeValide(request.getType()));
         q.setActif(request.getActif() != null ? request.getActif() : true);
         Questionnaire saved = questionnaireRepository.save(q);
+        if (Boolean.TRUE.equals(saved.getActif())) {
+            desactiverLesAutres(saved);
+        }
         log.info("Admin: questionnaire créé [{}] type={}", saved.getId(), saved.getType());
         return toQuestionnaireDTO(saved);
     }
@@ -93,11 +99,53 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
         if (StringUtils.hasText(request.getCode())) {
             q.setCode(request.getCode().trim().toUpperCase());
         }
-        q.setType(request.getType().trim().toUpperCase());
+        q.setType(typeValide(request.getType()));
         if (request.getActif() != null) {
             q.setActif(request.getActif());
         }
-        return toQuestionnaireDTO(questionnaireRepository.save(q));
+        Questionnaire saved = questionnaireRepository.save(q);
+        if (Boolean.TRUE.equals(saved.getActif())) {
+            desactiverLesAutres(saved);
+        }
+        return toQuestionnaireDTO(saved);
+    }
+
+    private String typeValide(String type) {
+        String normalise = type != null ? type.trim().toUpperCase() : "";
+        if (!TYPE_PSYCHOLOGIQUE.equals(normalise)) {
+            throw new BadRequestException("Seuls les questionnaires d'orientation psychologique sont pris en charge.");
+        }
+        return normalise;
+    }
+
+    /**
+     * Un seul questionnaire actif par type : publier un questionnaire retire le précédent
+     * de la publication (ses résultats déjà enregistrés sont conservés).
+     */
+    private void desactiverLesAutres(Questionnaire actif) {
+        for (Questionnaire autre : questionnaireRepository.findAllByTypeAndActifTrue(actif.getType())) {
+            if (!autre.getId().equals(actif.getId())) {
+                autre.setActif(false);
+                questionnaireRepository.save(autre);
+                log.info("Admin: questionnaire [{}] retiré de la publication au profit de [{}]", autre.getId(), actif.getId());
+            }
+        }
+    }
+
+    @Override
+    public QuestionDTO changerActivationQuestion(String id, boolean actif) {
+        Question q = questionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Question introuvable : " + id));
+        q.setActif(actif);
+        return toQuestionDTO(questionRepository.save(q));
+    }
+
+    @Override
+    public ReponseDTO changerActivationReponse(String id, boolean actif) {
+        Reponse r = reponseRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Réponse introuvable : " + id));
+        r.setActif(actif);
+        return toReponseDTO(reponseRepository.save(r));
     }
 
     @Override
@@ -289,6 +337,12 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
             q.setTypeReponse(request.getTypeReponse().trim());
         }
 
+        // État actif des réponses existantes, conservé lors de la reconstruction.
+        java.util.Map<String, Boolean> actifParReponse = new java.util.HashMap<>();
+        for (Reponse ancienne : q.getReponses()) {
+            actifParReponse.put(ancienne.getId(), !Boolean.FALSE.equals(ancienne.getActif()));
+        }
+
         // Vider les anciennes réponses pour reconstruire proprement la question
         q.getReponses().clear();
         questionRepository.saveAndFlush(q);
@@ -301,6 +355,8 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
                 r.setLibelle(repReq.getLibelle().trim());
                 r.setCode(StringUtils.hasText(repReq.getCode()) ? repReq.getCode().trim() : null);
                 r.setValeur(repReq.getValeur());
+                r.setActif(repReq.getActif() != null ? repReq.getActif()
+                        : actifParReponse.getOrDefault(repReq.getId() != null ? repReq.getId() : "", true));
                 r.setQuestion(q);
                 Reponse savedRep = reponseRepository.save(r);
 
@@ -494,6 +550,11 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
             if (StringUtils.hasText(specialiteId)) {
                 throw new BadRequestException("Pour un questionnaire psychologique, une spécialité juridique ne peut pas être ciblée.");
             }
+            CategorieBesoin categorie = categorieBesoinRepository.findById(categorieBesoinId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Catégorie introuvable : " + categorieBesoinId));
+            if (!"PSYCHOLOGUE".equalsIgnoreCase(categorie.getTypeProfessionnel())) {
+                throw new BadRequestException("La catégorie « " + categorie.getNom() + " » n'appartient pas à l'univers Psychologue.");
+            }
         } else if ("JURIDIQUE".equalsIgnoreCase(typeQuestionnaire)) {
             if (!StringUtils.hasText(specialiteId)) {
                 throw new BadRequestException("Pour un questionnaire juridique, la pondération doit obligatoirement cibler une spécialité.");
@@ -565,6 +626,7 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
                 .obligatoire(q.getObligatoire())
                 .contexte(q.getContexte())
                 .typeReponse(q.getTypeReponse())
+                .actif(!Boolean.FALSE.equals(q.getActif()))
                 .reponses(reponsesDto)
                 .build();
     }
@@ -586,6 +648,7 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
                 .valeur(r.getValeur())
                 .poids(r.getPoids())
                 .questionId(r.getQuestion() != null ? r.getQuestion().getId() : null)
+                .actif(!Boolean.FALSE.equals(r.getActif()))
                 .ponderations(ponderationsDto)
                 .build();
     }

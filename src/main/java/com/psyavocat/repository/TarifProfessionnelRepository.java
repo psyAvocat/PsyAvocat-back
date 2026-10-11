@@ -9,5 +9,7 @@ import java.util.List;
 @Repository
 public interface TarifProfessionnelRepository extends JpaRepository<TarifProfessionnel, String> {
     List<TarifProfessionnel> findByProfessionnelIdAndActifTrue(String professionnelId);
+
+    List<TarifProfessionnel> findByProfessionnelId(String professionnelId);
     boolean existsByProfessionnelIdAndTitre(String professionnelId, String titre);
 }

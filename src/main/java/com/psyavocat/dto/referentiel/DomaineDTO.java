@@ -15,5 +15,7 @@ public class DomaineDTO {
     private String id;
     private String nom;
     private String description;
+    /** AVOCAT ou PSYCHOLOGUE. */
+    private String typeProfessionnel;
     private List<SpecialiteDTO> specialites;
 }

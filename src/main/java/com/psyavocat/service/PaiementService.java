@@ -40,4 +40,7 @@ public interface PaiementService {
      * @return L'entité Paiement enregistrée
      */
     Paiement simulerPaiement(Utilisateur utilisateur, BigDecimal montant, String methode);
+
+    /** Paiements (simulés) du client connecté, du plus récent au plus ancien. */
+    java.util.List<com.psyavocat.dto.paiement.PaiementResponseDTO> getMesPaiements();
 }

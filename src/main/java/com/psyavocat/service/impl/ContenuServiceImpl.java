@@ -263,9 +263,9 @@ public class ContenuServiceImpl implements ContenuService {
         }
         Specialite specialite = specialiteRepository.findById(specialiteId)
                 .orElseThrow(() -> new BadRequestException("Catégorie inconnue"));
-        String attendu = auteur instanceof Avocat ? "AVOCAT" : "PSYCHOLOGUE";
-        String reel = specialite.resolveTypeProfessionnel();
-        if (reel != null && !attendu.equalsIgnoreCase(reel)) {
+        String attendu = com.psyavocat.service.support.TypesProfessionnel.typeDe(auteur);
+        String reel = com.psyavocat.service.support.TypesProfessionnel.typeDe(specialite);
+        if (!attendu.equals(reel)) {
             throw new BadRequestException("Cette catégorie n'appartient pas à votre univers professionnel");
         }
         return specialite;

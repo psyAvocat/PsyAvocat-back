@@ -6,11 +6,14 @@ import com.psyavocat.entity.NoteSeance;
 import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.entity.Psychologue;
 import com.psyavocat.entity.Seance;
+import com.psyavocat.entity.RendezVous;
+import com.psyavocat.exception.BadRequestException;
 import com.psyavocat.exception.ForbiddenException;
 import com.psyavocat.exception.ResourceNotFoundException;
 import com.psyavocat.repository.*;
 import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.SeanceService;
+import com.psyavocat.service.support.AccesProfessionnel;
 import com.psyavocat.service.support.ClientAccounts;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +35,7 @@ public class SeanceServiceImpl implements SeanceService {
     private final UtilisateurRepository utilisateurRepository;
     private final RendezVousRepository rendezVousRepository;
     private final AuthenticationContext authenticationContext;
+    private final AccesProfessionnel accesProfessionnel;
 
     public SeanceServiceImpl(
             FichePatientRepository fichePatientRepository,
@@ -40,7 +44,8 @@ public class SeanceServiceImpl implements SeanceService {
             PsychologueRepository psychologueRepository,
             UtilisateurRepository utilisateurRepository,
             RendezVousRepository rendezVousRepository,
-            AuthenticationContext authenticationContext
+            AuthenticationContext authenticationContext,
+            AccesProfessionnel accesProfessionnel
     ) {
         this.fichePatientRepository = fichePatientRepository;
         this.seanceRepository = seanceRepository;
@@ -49,12 +54,13 @@ public class SeanceServiceImpl implements SeanceService {
         this.utilisateurRepository = utilisateurRepository;
         this.rendezVousRepository = rendezVousRepository;
         this.authenticationContext = authenticationContext;
+        this.accesProfessionnel = accesProfessionnel;
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<FichePatientResponseDTO> getMesFichesPatient() {
-        String uid = authenticationContext.getRequiredFirebaseUid();
+        String uid = accesProfessionnel.exigerPsychologueApprouve().getId();
         return fichePatientRepository.findByPsychologueIdOrderByDateCreationDesc(uid).stream()
                 .map(this::toFicheDto)
                 .toList();
@@ -63,7 +69,7 @@ public class SeanceServiceImpl implements SeanceService {
     @Override
     @Transactional(readOnly = true)
     public FichePatientResponseDTO getFichePatient(String patientId) {
-        String uid = authenticationContext.getRequiredFirebaseUid();
+        String uid = accesProfessionnel.exigerPsychologueApprouve().getId();
         FichePatient fiche = fichePatientRepository.findByPsychologueIdAndPatientId(uid, patientId)
                 .orElseThrow(() -> new ResourceNotFoundException("Fiche patient introuvable"));
         return toFicheDto(fiche);
@@ -72,7 +78,7 @@ public class SeanceServiceImpl implements SeanceService {
     @Override
     @Transactional(readOnly = true)
     public List<SeanceResponseDTO> getMesSeances() {
-        String uid = authenticationContext.getRequiredFirebaseUid();
+        String uid = accesProfessionnel.exigerPsychologueApprouve().getId();
         return seanceRepository.findByPsychologueIdOrderByDateDesc(uid).stream()
                 .map(this::toSeanceDto)
                 .toList();
@@ -81,7 +87,7 @@ public class SeanceServiceImpl implements SeanceService {
     @Override
     @Transactional(readOnly = true)
     public SeanceResponseDTO getSeanceById(String id) {
-        String uid = authenticationContext.getRequiredFirebaseUid();
+        String uid = accesProfessionnel.exigerPsychologueApprouve().getId();
         Seance seance = seanceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Séance introuvable"));
         if (!seance.getPsychologue().getId().equals(uid)) {
@@ -92,17 +98,34 @@ public class SeanceServiceImpl implements SeanceService {
 
     @Override
     public SeanceResponseDTO createSeance(CreateSeanceRequest request) {
-        String uid = authenticationContext.getRequiredFirebaseUid();
-        Psychologue psychologue = psychologueRepository.findById(uid)
-                .orElseThrow(() -> new ForbiddenException("Seul un psychologue peut créer une séance de consultation"));
+        Psychologue psychologue = accesProfessionnel.exigerPsychologueApprouve();
+        String uid = psychologue.getId();
 
         Utilisateur patient = utilisateurRepository.findById(request.getPatientId())
                 .filter(ClientAccounts::isClient)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient introuvable"));
 
-        // Récupérer ou initialiser la fiche patient
+        // Le rendez-vous rattaché doit être un rendez-vous de CE psychologue avec CE patient.
+        RendezVous rdv = null;
+        if (request.getRendezVousId() != null && !request.getRendezVousId().isBlank()) {
+            rdv = rendezVousRepository.findById(request.getRendezVousId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Rendez-vous introuvable"));
+            boolean rdvDuPsychologue = rdv.getProfessionnel() != null && uid.equals(rdv.getProfessionnel().getId());
+            boolean rdvDuPatient = rdv.getPatient() != null && patient.getId().equals(rdv.getPatient().getId());
+            if (!rdvDuPsychologue || !rdvDuPatient) {
+                throw new ForbiddenException("Ce rendez-vous ne concerne pas ce patient ou n'est pas le vôtre");
+            }
+            if ("ANNULE".equalsIgnoreCase(rdv.getStatut())) {
+                throw new BadRequestException("Une séance ne peut pas être rattachée à un rendez-vous annulé");
+            }
+        }
+
+        // Un psychologue ne suit que ses propres patients : fiche existante ou rendez-vous commun.
         FichePatient fiche = fichePatientRepository.findByPsychologueIdAndPatientId(uid, patient.getId())
                 .orElseGet(() -> {
+                    if (!rendezVousRepository.existsByProfessionnelIdAndPatientId(uid, patient.getId())) {
+                        throw new ForbiddenException("Ce client n'est pas l'un de vos patients");
+                    }
                     FichePatient nouvelleFiche = new FichePatient();
                     nouvelleFiche.setDateCreation(LocalDate.now());
                     nouvelleFiche.setPsychologue(psychologue);
@@ -115,15 +138,13 @@ public class SeanceServiceImpl implements SeanceService {
         seance.setStatut(request.getStatut() != null && !request.getStatut().isBlank() ? request.getStatut() : "REALISEE");
         seance.setPsychologue(psychologue);
         seance.setFichePatient(fiche);
-        seance.setRendezVousId(request.getRendezVousId());
+        seance.setRendezVousId(rdv != null ? rdv.getId() : null);
         seance.setNotes(new ArrayList<>());
 
-        // Si la séance découle d'un rendez-vous, on met à jour son statut à "PASSE"
-        if (request.getRendezVousId() != null && !request.getRendezVousId().isBlank()) {
-            rendezVousRepository.findById(request.getRendezVousId()).ifPresent(rdv -> {
-                rdv.setStatut("PASSE");
-                rendezVousRepository.save(rdv);
-            });
+        // La séance réalisée clôt le rendez-vous dont elle découle.
+        if (rdv != null && "CONFIRME".equalsIgnoreCase(rdv.getStatut())) {
+            rdv.setStatut("PASSE");
+            rendezVousRepository.save(rdv);
         }
 
         if (request.getNoteInitiale() != null && !request.getNoteInitiale().isBlank()) {
@@ -140,7 +161,7 @@ public class SeanceServiceImpl implements SeanceService {
 
     @Override
     public NoteSeanceDTO ajouterNoteSeance(String seanceId, CreateNoteRequest request) {
-        String uid = authenticationContext.getRequiredFirebaseUid();
+        String uid = accesProfessionnel.exigerPsychologueApprouve().getId();
         Seance seance = seanceRepository.findById(seanceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Séance introuvable"));
 

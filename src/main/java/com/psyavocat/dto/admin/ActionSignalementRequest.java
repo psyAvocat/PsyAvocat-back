@@ -11,4 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ActionSignalementRequest {
     private String action; // "SUSPENDRE" ou "CLASSER"
+
+    /** Motif de la décision (obligatoire pour une suspension), conservé dans l'historique. */
+    private String motif;
 }

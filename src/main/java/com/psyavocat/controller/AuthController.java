@@ -31,7 +31,7 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<Map<String, Object>> getCurrentUser() {
         AuthenticatedUser user = authenticationContext.getCurrentUser()
-                .orElseThrow(() -> new IllegalStateException("Utilisateur non authentifié"));
+                .orElseThrow(() -> new com.psyavocat.exception.UnauthorizedException("Authentification requise."));
 
         List<String> roles = user.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)

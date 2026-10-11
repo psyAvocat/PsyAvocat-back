@@ -25,17 +25,29 @@ public class ProfessionnelServiceImpl implements ProfessionnelService {
     private final ProfessionnelMapper professionnelMapper;
     private final com.psyavocat.service.NotificationService notificationService;
     private final com.psyavocat.realtime.RealtimeGateway realtimeGateway;
+    private final com.psyavocat.repository.RendezVousRepository rendezVousRepository;
+    private final com.psyavocat.repository.DisponibiliteRepository disponibiliteRepository;
+    private final com.psyavocat.service.notification.RendezVousEvenements rendezVousEvenements;
+    private final com.psyavocat.service.support.JournalDecisions journalDecisions;
 
     public ProfessionnelServiceImpl(
             ProfessionnelRepository professionnelRepository,
             ProfessionnelMapper professionnelMapper,
             com.psyavocat.service.NotificationService notificationService,
-            com.psyavocat.realtime.RealtimeGateway realtimeGateway
+            com.psyavocat.realtime.RealtimeGateway realtimeGateway,
+            com.psyavocat.repository.RendezVousRepository rendezVousRepository,
+            com.psyavocat.repository.DisponibiliteRepository disponibiliteRepository,
+            com.psyavocat.service.notification.RendezVousEvenements rendezVousEvenements,
+            com.psyavocat.service.support.JournalDecisions journalDecisions
     ) {
         this.professionnelRepository = professionnelRepository;
         this.professionnelMapper = professionnelMapper;
         this.notificationService = notificationService;
         this.realtimeGateway = realtimeGateway;
+        this.rendezVousRepository = rendezVousRepository;
+        this.disponibiliteRepository = disponibiliteRepository;
+        this.rendezVousEvenements = rendezVousEvenements;
+        this.journalDecisions = journalDecisions;
     }
 
     @Override
@@ -123,52 +135,108 @@ public class ProfessionnelServiceImpl implements ProfessionnelService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<ProfessionnelResponseDTO> getProfessionnelsAdmin(String statut) {
+        String filtre = statut != null && !statut.isBlank() ? statut.trim().toUpperCase() : null;
+        if (filtre != null && !STATUTS_VALIDES.contains(filtre)) {
+            throw new BadRequestException("Statut invalide : " + statut + ". Valeurs acceptées : " + STATUTS_VALIDES);
+        }
+        List<Professionnel> list = filtre == null
+                ? professionnelRepository.findAll()
+                : professionnelRepository.findByStatutValidation(filtre);
+        return list.stream()
+                .sorted(java.util.Comparator.comparing(Professionnel::getDateInscription,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+                .map(professionnelMapper::toDto)
+                .toList();
+    }
+
+    @Override
     public ProfessionnelResponseDTO updateStatutValidation(String id, String nouveauStatut) {
         return updateStatutValidation(id, nouveauStatut, null);
     }
 
+    /**
+     * Décision administrative sur un professionnel.
+     *
+     * Règles :
+     * - REJECTED et SUSPENDED exigent un motif, transmis au professionnel ;
+     * - l'accès aux fonctions métier est recalculé immédiatement (contrôle serveur à chaque requête) ;
+     * - REJECTED / SUSPENDED : les rendez-vous FUTURS confirmés sont annulés (créneau libéré, acompte
+     *   simulé annulé) et les clients concernés sont notifiés ; les créneaux et la fiche disparaissent
+     *   des listes publiques (réservés aux professionnels approuvés) ;
+     * - la décision est historisée et diffusée en temps réel (listes clients, session du professionnel).
+     */
     @Override
     public ProfessionnelResponseDTO updateStatutValidation(String id, String nouveauStatut, String motif) {
-        if (!STATUTS_VALIDES.contains(nouveauStatut)) {
+        String statut = nouveauStatut != null ? nouveauStatut.trim().toUpperCase() : "";
+        if (!STATUTS_VALIDES.contains(statut)) {
             throw new BadRequestException("Statut invalide : " + nouveauStatut + ". Valeurs acceptées : " + STATUTS_VALIDES);
+        }
+        String motifNettoye = motif != null && !motif.isBlank() ? motif.trim() : null;
+        if (("REJECTED".equals(statut) || "SUSPENDED".equals(statut)) && motifNettoye == null) {
+            throw new BadRequestException("Le motif est obligatoire pour refuser ou suspendre un compte professionnel.");
         }
 
         Professionnel pro = professionnelRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Professionnel introuvable avec l'identifiant : " + id));
 
-        if ("REJECTED".equalsIgnoreCase(nouveauStatut)) {
-            if (motif == null || motif.trim().isEmpty()) {
-                throw new BadRequestException("Le motif est obligatoire pour refuser un dossier professionnel.");
+        switch (statut) {
+            case "REJECTED" -> {
+                pro.setMotifRefus(motifNettoye);
+                notificationService.sendNotification(pro.getId(), "VALIDATION_REFUSEE",
+                        "Votre dossier d'inscription professionnelle a été refusé. Motif : " + motifNettoye, null);
             }
-            pro.setMotifRefus(motif.trim());
-            notificationService.sendNotification(
-                    pro.getId(),
-                    "VALIDATION_REFUSEE",
-                    "Votre dossier d'inscription professionnelle a été refusé. Motif : " + motif.trim(),
-                    null
-            );
-        } else if ("APPROVED".equalsIgnoreCase(nouveauStatut)) {
-            pro.setMotifRefus(null);
-            notificationService.sendNotification(
-                    pro.getId(),
-                    "VALIDATION_APPROUVEE",
-                    "Félicitations ! Votre profil professionnel a été validé par l'administration. Vous avez désormais un accès complet à l'espace professionnel.",
-                    null
-            );
-        } else if ("SUSPENDED".equalsIgnoreCase(nouveauStatut)) {
-            notificationService.sendNotification(
-                    pro.getId(),
-                    "COMPTE_SUSPENDU",
-                    "Votre compte professionnel a été suspendu par l'administration." + (motif != null && !motif.isBlank() ? " Motif : " + motif.trim() : ""),
-                    null
-            );
+            case "APPROVED" -> {
+                pro.setMotifRefus(null);
+                notificationService.sendNotification(pro.getId(), "VALIDATION_APPROUVEE",
+                        "Félicitations ! Votre profil professionnel a été validé par l'administration. Vous avez désormais un accès complet à l'espace professionnel.",
+                        null);
+            }
+            case "SUSPENDED" -> notificationService.sendNotification(pro.getId(), "COMPTE_SUSPENDU",
+                    "Votre compte professionnel a été suspendu par l'administration. Motif : " + motifNettoye, null);
+            default -> {
+                // PENDING : remise en vérification, sans notification spécifique.
+            }
         }
 
-        pro.setStatutValidation(nouveauStatut);
+        pro.setStatutValidation(statut);
         Professionnel saved = professionnelRepository.save(pro);
-        // Les listes des clients connectés se mettent à jour (apparition / retrait du professionnel).
-        realtimeGateway.diffuser("PROFESSIONNEL_MIS_A_JOUR", java.util.Map.of("id", saved.getId(), "statut", nouveauStatut));
+
+        if ("REJECTED".equals(statut) || "SUSPENDED".equals(statut)) {
+            annulerRendezVousFuturs(saved);
+        }
+
+        journalDecisions.enregistrer(com.psyavocat.service.support.JournalDecisions.TYPE_STATUT_PROFESSIONNEL,
+                saved.getId(), statut, motifNettoye);
+
+        // Les listes des clients connectés se mettent à jour (apparition / retrait du professionnel)
+        // et l'espace du professionnel relit immédiatement ses droits.
+        realtimeGateway.diffuser("PROFESSIONNEL_MIS_A_JOUR", java.util.Map.of("id", saved.getId(), "statut", statut));
+        realtimeGateway.envoyerA(saved.getId(), "COMPTE_MIS_A_JOUR", java.util.Map.of("statutValidation", statut));
         return professionnelMapper.toDto(saved);
     }
-}
 
+    /** Rendez-vous futurs du professionnel annulés : créneaux libérés, acomptes simulés annulés, clients prévenus. */
+    private void annulerRendezVousFuturs(Professionnel pro) {
+        java.time.LocalDateTime maintenant = java.time.LocalDateTime.now();
+        for (com.psyavocat.entity.RendezVous rdv : rendezVousRepository.findByProfessionnelIdOrderByDateHeureDesc(pro.getId())) {
+            boolean actif = "CONFIRME".equalsIgnoreCase(rdv.getStatut()) || "EN_ATTENTE".equalsIgnoreCase(rdv.getStatut());
+            if (!actif || rdv.getDateHeure() == null || !rdv.getDateHeure().isAfter(maintenant)) {
+                continue;
+            }
+            rdv.setStatut("ANNULE");
+            if (rdv.getPaiement() != null && "PAYE".equalsIgnoreCase(rdv.getPaiement().getStatut())) {
+                rdv.getPaiement().setStatut("ANNULE");
+            }
+            com.psyavocat.entity.Disponibilite creneau = rdv.getDisponibilite();
+            if (creneau != null) {
+                creneau.setStatut("LIBRE");
+                disponibiliteRepository.save(creneau);
+            }
+            rendezVousRepository.save(rdv);
+            rendezVousEvenements.rendezVousAnnuleParPlateforme(rdv);
+            rendezVousEvenements.creneauMisAJour(creneau);
+        }
+    }
+}

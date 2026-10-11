@@ -58,6 +58,9 @@ public class QuestionCompleteCreateRequest {
 
         private String valeur;
 
+        /** Facultatif : conserve l'état actif/inactif lors d'une modification. */
+        private Boolean actif;
+
         @Valid
         @Builder.Default
         private List<PonderationItemRequest> ponderations = new ArrayList<>();

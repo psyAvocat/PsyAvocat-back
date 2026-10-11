@@ -41,7 +41,11 @@ public class PushNotificationService {
         this.firebaseMessagingService = firebaseMessagingService;
     }
 
-    @Transactional
+    /**
+     * Appelé APRÈS le commit de la notification (NotificationDispatcher) : la désactivation des
+     * jetons révoqués doit s'exécuter dans sa propre transaction, sinon elle n'est jamais enregistrée.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public void envoyerA(String utilisateurId, String titre, String message, Map<String, String> donnees) {
         List<DeviceRegistration> appareils = deviceRegistrationRepository.findByUtilisateurIdAndActifTrue(utilisateurId);
         if (appareils.isEmpty()) {

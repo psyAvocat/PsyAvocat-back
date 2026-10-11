@@ -154,11 +154,14 @@ class OrientationServiceTest {
 
         // Catégories
         CategorieBesoin catClinique = new CategorieBesoin();
+        catClinique.setTypeProfessionnel("PSYCHOLOGUE");
         catClinique.setId("cat-clinique");
         catClinique.setCode("CLINIQUE");
         catClinique.setNom("Psychologie clinique et bien-être");
 
         CategorieBesoin catTravail = new CategorieBesoin();
+
+        catTravail.setTypeProfessionnel("PSYCHOLOGUE");
         catTravail.setId("cat-travail");
         catTravail.setCode("TRAVAIL");
         catTravail.setNom("Psychologie du travail");
@@ -199,8 +202,8 @@ class OrientationServiceTest {
     }
 
     @Test
-    @DisplayName("Départage d'égalité : la catégorie ciblée par Q01 départage les ex-aequo")
-    void testEvaluerQuestionnaire_DepartageEgalite_ParQ01() {
+    @DisplayName("Départage d'égalité : la première question (ordre configuré) départage les ex-aequo")
+    void testEvaluerQuestionnaire_DepartageEgalite_ParOrdreDesQuestions() {
         when(questionnaireRepository.findById(questionnaire.getId())).thenReturn(Optional.of(questionnaire));
         when(questionRepository.findByQuestionnaireIdOrderByOrdreAsc(questionnaire.getId()))
                 .thenReturn(List.of(question1, question2));
@@ -218,10 +221,14 @@ class OrientationServiceTest {
         when(reponseRepository.findAllById(List.of("r1", "r2"))).thenReturn(List.of(r1, r2));
 
         CategorieBesoin catClinique = new CategorieBesoin();
+
+        catClinique.setTypeProfessionnel("PSYCHOLOGUE");
         catClinique.setId("cat-clinique");
         catClinique.setCode("CLINIQUE");
 
         CategorieBesoin catTravail = new CategorieBesoin();
+
+        catTravail.setTypeProfessionnel("PSYCHOLOGUE");
         catTravail.setId("cat-travail");
         catTravail.setCode("TRAVAIL");
 
@@ -238,8 +245,6 @@ class OrientationServiceTest {
 
         when(ponderationOrientationRepository.findByReponseIdIn(List.of("r1", "r2")))
                 .thenReturn(List.of(pond1, pond2));
-        when(ponderationOrientationRepository.findByReponseId("r1"))
-                .thenReturn(List.of(pond1));
 
         when(resultatOrientationRepository.save(any(ResultatOrientation.class))).thenAnswer(i -> i.getArgument(0));
 
@@ -248,9 +253,9 @@ class OrientationServiceTest {
 
         assertThat(result).isNotNull();
         assertThat(result.getScore()).isEqualTo(10.0);
-        // CLINIQUE est choisi car ciblé par Q01 !
+        // CLINIQUE est choisi : pondéré par la question d'ordre 1 (aucune règle sur un code de question).
         assertThat(result.getCategorieBesoinCode()).isEqualTo("CLINIQUE");
-        assertThat(result.getStatutDepartage()).isEqualTo("EGALITE_DEPARTAGEE_PAR_Q01");
+        assertThat(result.getStatutDepartage()).isEqualTo("EGALITE_DEPARTAGEE_PAR_ORDRE_DES_QUESTIONS");
     }
 
     @Test
@@ -272,7 +277,7 @@ class OrientationServiceTest {
 
         assertThatThrownBy(() -> orientationService.evaluerQuestionnaire(req))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("Mode sélection unique");
+                .hasMessageContaining("Une seule réponse est autorisée");
     }
 
     @Test
@@ -306,7 +311,7 @@ class OrientationServiceTest {
 
         assertThatThrownBy(() -> orientationService.evaluerQuestionnaire(req))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("n'est plus actif");
+                .hasMessageContaining("n'est plus proposé");
     }
 
     @Test
@@ -346,6 +351,8 @@ class OrientationServiceTest {
         when(reponseRepository.findAllById(List.of("r1", "r2"))).thenReturn(List.of(r1, r2));
 
         CategorieBesoin catStress = new CategorieBesoin();
+
+        catStress.setTypeProfessionnel("PSYCHOLOGUE");
         catStress.setId("cat-stress");
         catStress.setCode("STRESS");
 
@@ -371,5 +378,133 @@ class OrientationServiceTest {
         // Score cumulé : 3 + 2 = 5
         assertThat(result.getScore()).isEqualTo(5.0);
         assertThat(result.getCategorieBesoinCode()).isEqualTo("STRESS");
+    }
+
+    // ------------------------------------------------------------------
+    // Configuration désactivée / obsolète et confidentialité (lot 3)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("Une réponse désactivée (questionnaire modifié) est refusée proprement")
+    void evaluer_reponseDesactivee_refusee() {
+        when(questionnaireRepository.findById(questionnaire.getId())).thenReturn(Optional.of(questionnaire));
+        Reponse r1 = new Reponse();
+        r1.setId("r1");
+        r1.setQuestion(question1);
+        r1.setActif(false);
+        when(reponseRepository.findAllById(List.of("r1"))).thenReturn(List.of(r1));
+
+        SoumissionQuestionnaireRequest req = new SoumissionQuestionnaireRequest(questionnaire.getId(), List.of("r1"));
+        assertThatThrownBy(() -> orientationService.evaluerQuestionnaire(req))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("modifié");
+    }
+
+    @Test
+    @DisplayName("Catégories désactivées ou d'un autre univers ignorées : aucune orientation inventée")
+    void evaluer_categoriesInutilisables_refuse() {
+        question2.setObligatoire(false);
+        when(questionnaireRepository.findById(questionnaire.getId())).thenReturn(Optional.of(questionnaire));
+        when(questionRepository.findByQuestionnaireIdOrderByOrdreAsc(questionnaire.getId()))
+                .thenReturn(List.of(question1, question2));
+        Reponse r1 = new Reponse();
+        r1.setId("r1");
+        r1.setQuestion(question1);
+        when(reponseRepository.findAllById(List.of("r1"))).thenReturn(List.of(r1));
+
+        CategorieBesoin inactive = new CategorieBesoin();
+        inactive.setTypeProfessionnel("PSYCHOLOGUE");
+        inactive.setActif(false);
+        CategorieBesoin juridique = new CategorieBesoin();
+        juridique.setTypeProfessionnel("AVOCAT");
+        PonderationOrientation p1 = new PonderationOrientation();
+        p1.setReponse(r1);
+        p1.setCategorieBesoin(inactive);
+        p1.setPoids(5);
+        PonderationOrientation p2 = new PonderationOrientation();
+        p2.setReponse(r1);
+        p2.setCategorieBesoin(juridique);
+        p2.setPoids(9);
+        when(ponderationOrientationRepository.findByReponseIdIn(List.of("r1"))).thenReturn(List.of(p1, p2));
+
+        SoumissionQuestionnaireRequest req = new SoumissionQuestionnaireRequest(questionnaire.getId(), List.of("r1"));
+        assertThatThrownBy(() -> orientationService.evaluerQuestionnaire(req)).isInstanceOf(BadRequestException.class);
+        verifyNoInteractions(matchingProfessionnelService);
+    }
+
+    @Test
+    @DisplayName("Aucun professionnel correspondant : liste vide et état explicite")
+    void evaluer_aucunProfessionnel_etatExplicite() {
+        question2.setObligatoire(false);
+        when(questionnaireRepository.findById(questionnaire.getId())).thenReturn(Optional.of(questionnaire));
+        when(questionRepository.findByQuestionnaireIdOrderByOrdreAsc(questionnaire.getId()))
+                .thenReturn(List.of(question1, question2));
+        Reponse r1 = new Reponse();
+        r1.setId("r1");
+        r1.setQuestion(question1);
+        when(reponseRepository.findAllById(List.of("r1"))).thenReturn(List.of(r1));
+        CategorieBesoin cat = new CategorieBesoin();
+        cat.setId("cat-1");
+        cat.setTypeProfessionnel("PSYCHOLOGUE");
+        PonderationOrientation p = new PonderationOrientation();
+        p.setReponse(r1);
+        p.setCategorieBesoin(cat);
+        p.setPoids(4);
+        when(ponderationOrientationRepository.findByReponseIdIn(List.of("r1"))).thenReturn(List.of(p));
+        when(matchingProfessionnelService.matcherParCategorieBesoin(cat, 5)).thenReturn(List.of());
+        when(resultatOrientationRepository.save(any(ResultatOrientation.class))).thenAnswer(i -> i.getArgument(0));
+
+        ResultatOrientationDTO result = orientationService.evaluerQuestionnaire(
+                new SoumissionQuestionnaireRequest(questionnaire.getId(), List.of("r1")));
+
+        assertThat(result.getProfessionnelsRecommandes()).isEmpty();
+        assertThat(result.getEtatRecommandation()).isEqualTo("AUCUN_PROFESSIONNEL_DISPONIBLE");
+    }
+
+    @Test
+    @DisplayName("Aucun questionnaire actif : 404, jamais de repli sur un questionnaire inactif")
+    void questionnairePublie_aucunActif_404() {
+        when(questionnaireRepository.findAllByTypeAndActifTrue("PSYCHOLOGIQUE")).thenReturn(List.of());
+
+        assertThatThrownBy(() -> orientationService.getQuestionnaireByType("PSYCHOLOGIQUE"))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(questionnaireRepository, never()).findByType(any());
+    }
+
+    @Test
+    @DisplayName("Aucun questionnaire juridique n'est proposé")
+    void questionnaireJuridique_jamaisPropose() {
+        assertThatThrownBy(() -> orientationService.getQuestionnaireByType("JURIDIQUE"))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertThat(orientationService.getQuestionnaires("JURIDIQUE")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Questionnaire publié : questions et réponses désactivées masquées, pondérations jamais exposées")
+    void questionnairePublie_filtreEtConfidentialite() {
+        Reponse active = new Reponse();
+        active.setId("ra");
+        active.setLibelle("Oui");
+        active.setPoids(7);
+        active.setQuestion(question1);
+        Reponse inactive = new Reponse();
+        inactive.setId("ri");
+        inactive.setLibelle("Non");
+        inactive.setActif(false);
+        inactive.setQuestion(question1);
+        question1.setReponses(new java.util.ArrayList<>(List.of(active, inactive)));
+        Reponse r2 = new Reponse();
+        r2.setId("r2");
+        r2.setLibelle("Travail");
+        question2.setActif(false);
+        question2.setReponses(new java.util.ArrayList<>(List.of(r2)));
+        when(questionnaireRepository.findAllByTypeAndActifTrue("PSYCHOLOGIQUE")).thenReturn(List.of(questionnaire));
+
+        var dto = orientationService.getQuestionnaireByType("PSYCHOLOGIQUE");
+
+        assertThat(dto.getQuestions()).extracting("id").containsExactly("q-1");
+        assertThat(dto.getQuestions().get(0).getReponses()).extracting("id").containsExactly("ra");
+        assertThat(dto.getQuestions().get(0).getReponses().get(0).getPoids()).isNull();
+        assertThat(dto.getQuestions().get(0).getReponses().get(0).getPonderations()).isNull();
     }
 }

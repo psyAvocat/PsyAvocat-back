@@ -16,6 +16,8 @@ public interface QuestionnaireRepository extends JpaRepository<Questionnaire, St
 
     Optional<Questionnaire> findByTypeAndActifTrue(String type);
 
+    List<Questionnaire> findAllByTypeAndActifTrue(String type);
+
     boolean existsByType(String type);
 
     Optional<Questionnaire> findByCode(String code);

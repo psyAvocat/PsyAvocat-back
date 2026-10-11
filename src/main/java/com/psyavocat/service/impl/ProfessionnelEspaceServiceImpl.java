@@ -13,6 +13,7 @@ import com.psyavocat.repository.SoumissionDossierRepository;
 import com.psyavocat.repository.UtilisateurRepository;
 import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.ProfessionnelEspaceService;
+import com.psyavocat.service.support.AccesProfessionnel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,30 +31,27 @@ public class ProfessionnelEspaceServiceImpl implements ProfessionnelEspaceServic
     private final RendezVousRepository rendezVousRepository;
     private final SoumissionDossierRepository soumissionDossierRepository;
     private final FichePatientRepository fichePatientRepository;
+    private final AccesProfessionnel accesProfessionnel;
 
     public ProfessionnelEspaceServiceImpl(
             AuthenticationContext authenticationContext,
             UtilisateurRepository utilisateurRepository,
             RendezVousRepository rendezVousRepository,
             SoumissionDossierRepository soumissionDossierRepository,
-            FichePatientRepository fichePatientRepository
+            FichePatientRepository fichePatientRepository,
+            AccesProfessionnel accesProfessionnel
     ) {
         this.authenticationContext = authenticationContext;
         this.utilisateurRepository = utilisateurRepository;
         this.rendezVousRepository = rendezVousRepository;
         this.soumissionDossierRepository = soumissionDossierRepository;
         this.fichePatientRepository = fichePatientRepository;
+        this.accesProfessionnel = accesProfessionnel;
     }
 
+    /** Clients et statistiques : réservés aux professionnels approuvés. */
     private Professionnel getAuthenticatedProfessionnel() {
-        String uid = authenticationContext.getRequiredFirebaseUid();
-        Utilisateur user = utilisateurRepository.findById(uid)
-                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable : " + uid));
-
-        if (!(user instanceof Professionnel pro)) {
-            throw new ForbiddenException("Cet espace est réservé aux professionnels (Avocats / Psychologues).");
-        }
-        return pro;
+        return accesProfessionnel.exigerApprouve();
     }
 
     @Override

@@ -1,6 +1,5 @@
 package com.psyavocat.service.impl;
 
-import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatDirectRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousAvocatRequest;
 import com.psyavocat.dto.rendezvous.CreateRendezVousPsyRequest;
 import com.psyavocat.dto.rendezvous.ModifierCreneauRequest;
@@ -15,6 +14,7 @@ import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.PaiementService;
 import com.psyavocat.service.RendezVousService;
 import com.psyavocat.service.notification.RendezVousEvenements;
+import com.psyavocat.service.support.AccesProfessionnel;
 import com.psyavocat.service.support.ClientAccounts;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -90,6 +90,11 @@ public class RendezVousServiceImpl implements RendezVousService {
                 modeOuDefaut(request.getMode(), "VISIO"), montantTotal, request.getMotif());
     }
 
+    /**
+     * Rendez-vous avec un avocat : uniquement après acceptation du dossier par cet avocat
+     * (workflow dossier → soumission → prise en charge → réservation).
+     * Le montant est celui proposé par l'avocat à l'acceptation (donnée serveur).
+     */
     @Override
     public RendezVousResponseDTO createRendezVousAvocat(CreateRendezVousAvocatRequest request) {
         Utilisateur client = clientConnecte();
@@ -97,48 +102,48 @@ public class RendezVousServiceImpl implements RendezVousService {
         SoumissionDossier soumission = soumissionDossierRepository.findById(request.getSoumissionId())
                 .orElseThrow(() -> new ResourceNotFoundException("Soumission de dossier introuvable"));
 
-        if (!"ACCEPTEE".equalsIgnoreCase(soumission.getStatut())) {
-            throw new BadRequestException("Un rendez-vous avocat nécessite que la soumission du dossier soit acceptée");
-        }
-
         Dossier dossier = soumission.getDossier();
-        if (dossier != null && "PRIS_EN_CHARGE".equalsIgnoreCase(dossier.getStatut())) {
-            throw new BadRequestException("Ce dossier juridique a déjà été pris en charge par un autre avocat");
-        }
-        if (dossier == null || !dossier.getJusticiable().getId().equals(client.getId())) {
+        if (dossier != null && dossier.getJusticiable() != null
+                && !dossier.getJusticiable().getId().equals(client.getId())) {
             throw new ForbiddenException("Vous n'êtes pas le propriétaire de ce dossier");
         }
+        if ("CADUQUE".equalsIgnoreCase(soumission.getStatut())) {
+            throw new BadRequestException("Ce dossier juridique a déjà été pris en charge par un autre avocat");
+        }
+        if (!"ACCEPTEE".equalsIgnoreCase(soumission.getStatut()) && !"RETENUE".equalsIgnoreCase(soumission.getStatut())) {
+            throw new BadRequestException("Un rendez-vous avocat nécessite que la soumission du dossier soit acceptée");
+        }
+        if (dossier == null || dossier.getJusticiable() == null) {
+            throw new ForbiddenException("Vous n'êtes pas le propriétaire de ce dossier");
+        }
+        if (!AccesProfessionnel.estApprouve(soumission.getAvocat())) {
+            throw new BadRequestException("Cet avocat n'est plus disponible sur la plateforme");
+        }
 
-        // Le tarif est celui proposé par l'avocat lors de l'acceptation (donnée serveur).
-        BigDecimal montantTotal = soumission.getTarifPropose() != null ? soumission.getTarifPropose() : BigDecimal.ZERO;
+        BigDecimal montantTotal = soumission.getTarifPropose();
+        if (montantTotal == null || montantTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("L'avocat n'a pas encore communiqué d'honoraires pour ce dossier");
+        }
         RendezVousResponseDTO dto = reserver(client, soumission.getAvocat(), request.getDisponibiliteId(),
                 modeOuDefaut(request.getMode(), "CABINET"), montantTotal, null);
 
-        // RÈGLE MÉTIER : verrouillage exclusif du dossier sur l'avocat retenu.
-        soumission.setStatut("RETENUE");
-        soumissionDossierRepository.save(soumission);
-        dossier.setStatut("PRIS_EN_CHARGE");
-        dossierRepository.save(dossier);
+        // L'avocat ayant accepté est retenu ; la prise en charge exclusive est (ré)affirmée
+        // pour les dossiers acceptés avant l'application de cette règle à l'acceptation.
+        if (!"RETENUE".equalsIgnoreCase(soumission.getStatut())) {
+            soumission.setStatut("RETENUE");
+            soumissionDossierRepository.save(soumission);
+        }
+        if (!"PRIS_EN_CHARGE".equalsIgnoreCase(dossier.getStatut())) {
+            dossier.setStatut("PRIS_EN_CHARGE");
+            dossierRepository.save(dossier);
+        }
         for (SoumissionDossier autre : soumissionDossierRepository.findByDossierId(dossier.getId())) {
-            if (!autre.getId().equals(soumission.getId())) {
+            if (!autre.getId().equals(soumission.getId()) && !"CADUQUE".equalsIgnoreCase(autre.getStatut())) {
                 autre.setStatut("CADUQUE");
                 soumissionDossierRepository.save(autre);
             }
         }
         return dto;
-    }
-
-    @Override
-    public RendezVousResponseDTO createRendezVousAvocatDirect(CreateRendezVousAvocatDirectRequest request) {
-        Utilisateur client = clientConnecte();
-
-        Avocat avocat = avocatRepository.findById(request.getAvocatId())
-                .orElseThrow(() -> new ResourceNotFoundException("Avocat introuvable"));
-        verifierProfessionnelValide(avocat);
-        BigDecimal montantTotal = verifierTarif(avocat, request.getMontantTotal());
-
-        return reserver(client, avocat, request.getDisponibiliteId(),
-                modeOuDefaut(request.getMode(), "CABINET"), montantTotal, request.getMotif());
     }
 
     /**
@@ -261,8 +266,18 @@ public class RendezVousServiceImpl implements RendezVousService {
         if ("ANNULE".equalsIgnoreCase(rdv.getStatut()) || "PASSE".equalsIgnoreCase(rdv.getStatut())) {
             throw new BadRequestException("Ce rendez-vous ne peut plus être annulé");
         }
+        // Côté praticien, l'annulation est une action métier : compte approuvé obligatoire.
+        if (rdv.getProfessionnel() != null && rdv.getProfessionnel().getId().equals(uid)
+                && !AccesProfessionnel.estApprouve(rdv.getProfessionnel())) {
+            throw new ForbiddenException("Votre compte professionnel ne permet pas cette action actuellement.",
+                    AccesProfessionnel.CODE_NON_APPROUVE);
+        }
 
         rdv.setStatut("ANNULE");
+        // L'acompte simulé suit le rendez-vous : il est marqué annulé (aucun flux financier réel).
+        if (rdv.getPaiement() != null && "PAYE".equalsIgnoreCase(rdv.getPaiement().getStatut())) {
+            rdv.getPaiement().setStatut("ANNULE");
+        }
 
         // Si le créneau est encore dans le futur, il redevient réservable.
         Disponibilite d = rdv.getDisponibilite();
@@ -306,12 +321,8 @@ public class RendezVousServiceImpl implements RendezVousService {
     }
 
     private void verifierProfessionnelValide(Professionnel pro) {
-        if (!"APPROVED".equalsIgnoreCase(pro.getStatutValidation())
-                && !"VALIDE".equalsIgnoreCase(pro.getStatutValidation())) {
-            throw new BadRequestException("Ce professionnel n'est pas encore validé par la plateforme");
-        }
-        if (Boolean.FALSE.equals(pro.getActif())) {
-            throw new BadRequestException("Ce professionnel n'est plus disponible sur la plateforme");
+        if (!AccesProfessionnel.estApprouve(pro)) {
+            throw new BadRequestException("Ce professionnel n'est pas disponible à la réservation sur la plateforme");
         }
     }
 
