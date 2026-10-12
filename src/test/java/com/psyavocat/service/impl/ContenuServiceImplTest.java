@@ -170,6 +170,21 @@ class ContenuServiceImplTest {
     }
 
     @Test
+    @DisplayName("Fiche d'un professionnel : seules ses publications sont listées")
+    void client_consulteLesArticlesDUnAvocat() {
+        connecterClient();
+        Avocat autre = avocatValide();
+        autre.setId("avocat-2");
+        when(contenuRepository.rechercherPublies("ARTICLE", null, null)).thenReturn(java.util.List.of(
+                contenuPublie("contenu-1", avocatValide()),
+                contenuPublie("contenu-2", autre)));
+
+        assertThat(service.rechercher("ARTICLE", null, null, "recent", "avocat-2"))
+                .extracting(ContenuResponseDTO::getId)
+                .containsExactly("contenu-2");
+    }
+
+    @Test
     @DisplayName("Un professionnel ne consulte pas la liste publique (réservée à l'app mobile)")
     void professionnel_nePeutPasListerLesPublications() {
         when(authenticationContext.getFirebaseUid()).thenReturn(Optional.of("avocat-1"));

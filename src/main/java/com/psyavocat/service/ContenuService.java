@@ -17,8 +17,13 @@ public interface ContenuService {
     /**
      * Contenus publiés d'un type.
      * @param tri « recent » (par défaut) ou « populaire » (nombre de consultations)
+     * @param auteurId facultatif : publications d'un seul professionnel (sa fiche)
      */
-    List<ContenuResponseDTO> rechercher(String type, String q, String specialiteId, String tri);
+    List<ContenuResponseDTO> rechercher(String type, String q, String specialiteId, String tri, String auteurId);
+
+    default List<ContenuResponseDTO> rechercher(String type, String q, String specialiteId, String tri) {
+        return rechercher(type, q, specialiteId, tri, null);
+    }
 
     /** Détail d'un contenu publié (404 s'il est désactivé ou supprimé, sauf pour son auteur). */
     ContenuResponseDTO getContenu(String id);

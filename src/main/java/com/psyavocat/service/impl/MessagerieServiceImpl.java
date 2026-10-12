@@ -296,7 +296,12 @@ public class MessagerieServiceImpl implements MessagerieService {
 
         MessageResponseDTO dernierMsg = null;
         if (c.getMessages() != null && !c.getMessages().isEmpty()) {
-            MessageContact last = c.getMessages().get(c.getMessages().size() - 1);
+            // La collection n'est pas triée (ordre des identifiants) : le dernier
+            // message est le plus récent par date d'envoi.
+            MessageContact last = c.getMessages().stream()
+                    .max(java.util.Comparator.comparing(MessageContact::getDateEnvoi,
+                            java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
+                    .orElseThrow();
             dernierMsg = toMessageDto(last);
         }
 

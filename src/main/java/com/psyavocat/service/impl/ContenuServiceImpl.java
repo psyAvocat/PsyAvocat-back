@@ -63,13 +63,14 @@ public class ContenuServiceImpl implements ContenuService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ContenuResponseDTO> rechercher(String type, String q, String specialiteId, String tri) {
+    public List<ContenuResponseDTO> rechercher(String type, String q, String specialiteId, String tri, String auteurId) {
         // Les publications sont destinées aux clients (application mobile).
         // Les professionnels gèrent les leurs via /mes-contenus.
         exigerLecteurPublic();
         String typeNormalise = typeValide(type);
         String texte = q != null && !q.isBlank() ? q.trim() : null;
         String specialite = specialiteId != null && !specialiteId.isBlank() ? specialiteId : null;
+        String auteur = auteurId != null && !auteurId.isBlank() ? auteurId : null;
 
         Comparator<Contenu> ordre = "populaire".equalsIgnoreCase(tri)
                 ? Comparator.comparing((Contenu c) -> c.getNombreVues() != null ? c.getNombreVues() : 0L).reversed()
@@ -77,6 +78,7 @@ public class ContenuServiceImpl implements ContenuService {
 
         return contenuRepository.rechercherPublies(typeNormalise, texte, specialite).stream()
                 .filter(c -> auteurPublieValide(c.getAuteur()))
+                .filter(c -> auteur == null || auteur.equals(c.getAuteur().getId()))
                 .sorted(ordre)
                 .map(c -> toDto(c, false))
                 .toList();

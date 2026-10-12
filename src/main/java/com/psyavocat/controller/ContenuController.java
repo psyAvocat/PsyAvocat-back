@@ -34,9 +34,10 @@ public class ContenuController {
             @RequestParam String type,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String specialiteId,
-            @RequestParam(required = false, defaultValue = "recent") String tri
+            @RequestParam(required = false, defaultValue = "recent") String tri,
+            @RequestParam(required = false) String auteurId
     ) {
-        return ResponseEntity.ok(contenuService.rechercher(type, q, specialiteId, tri));
+        return ResponseEntity.ok(contenuService.rechercher(type, q, specialiteId, tri, auteurId));
     }
 
     @GetMapping("/mes-contenus")
