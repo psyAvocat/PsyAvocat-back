@@ -265,13 +265,20 @@ public class ContenuServiceImpl implements ContenuService {
         contenu.setDescription(request.getDescription() != null ? request.getDescription().trim() : null);
         contenu.setContenu(request.getContenu());
         contenu.setActif(request.getActif() == null || request.getActif());
-        contenu.setSpecialite(specialiteDuBonUnivers(request.getSpecialiteId(), auteur));
+        contenu.setSpecialite(specialiteDeLAuteur(request.getSpecialiteId(), auteur, contenu.getSpecialite()));
     }
 
-    /** La catégorie doit être une spécialité du même univers que l'auteur. */
-    private Specialite specialiteDuBonUnivers(String specialiteId, Professionnel auteur) {
+    /**
+     * La catégorie doit être une spécialité du même univers que l'auteur et
+     * faire partie des spécialités déclarées à son inscription. Une publication
+     * existante peut conserver sa catégorie d'origine.
+     */
+    private Specialite specialiteDeLAuteur(String specialiteId, Professionnel auteur, Specialite actuelle) {
         if (specialiteId == null || specialiteId.isBlank()) {
             return null;
+        }
+        if (actuelle != null && specialiteId.equals(actuelle.getId())) {
+            return actuelle;
         }
         Specialite specialite = specialiteRepository.findById(specialiteId)
                 .orElseThrow(() -> new BadRequestException("Catégorie inconnue"));
@@ -279,6 +286,12 @@ public class ContenuServiceImpl implements ContenuService {
         String reel = com.psyavocat.service.support.TypesProfessionnel.typeDe(specialite);
         if (!attendu.equals(reel)) {
             throw new BadRequestException("Cette catégorie n'appartient pas à votre univers professionnel");
+        }
+        boolean declaree = auteur.getSpecialites() != null && auteur.getSpecialites().stream()
+                .anyMatch(s -> specialiteId.equals(s.getId()));
+        if (!declaree) {
+            throw new BadRequestException(
+                    "Choisissez une catégorie parmi vos spécialités (modifiables depuis votre profil).");
         }
         return specialite;
     }

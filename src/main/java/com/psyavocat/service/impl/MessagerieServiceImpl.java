@@ -105,6 +105,8 @@ public class MessagerieServiceImpl implements MessagerieService {
         if (updated) {
             messageContactRepository.saveAll(messages);
         }
+        // Conversation lue : ses notifications « Nouveau message » le sont aussi (cloche à jour).
+        notificationService.marquerLuesPourRessource(uid, "CONVERSATION", conversationId);
 
         return messages.stream()
                 .map(this::toMessageDto)
@@ -120,9 +122,8 @@ public class MessagerieServiceImpl implements MessagerieService {
         Utilisateur destinataire = utilisateurRepository.findById(request.getDestinataireId())
                 .orElseThrow(() -> new ResourceNotFoundException("Destinataire introuvable"));
 
-        verifierDestinataireAutorise(expediteur, destinataire);
-
-        // Une seule conversation par paire de personnes : on la réutilise si elle existe.
+        // Une seule conversation par paire de personnes : on la réutilise si elle existe
+        // (les droits y sont vérifiés par sendMessage, réponse à une prise de contact comprise).
         Conversation existante = conversationRepository.findByParticipantId(uid).stream()
                 .filter(c -> c.getParticipants().stream().anyMatch(p -> p.getId().equals(destinataire.getId())))
                 .findFirst()
@@ -131,6 +132,8 @@ public class MessagerieServiceImpl implements MessagerieService {
             sendMessage(existante.getId(), new SendMessageRequest(request.getObjet(), request.getPremierMessage()));
             return toConversationDto(conversationRepository.findById(existante.getId()).orElse(existante), uid);
         }
+
+        verifierDestinataireAutorise(expediteur, destinataire, false);
 
         Conversation conv = new Conversation();
         conv.setDateCreation(LocalDateTime.now());
@@ -171,7 +174,9 @@ public class MessagerieServiceImpl implements MessagerieService {
         // Les droits sont revérifiés à chaque envoi (statut ou relation ayant pu changer).
         for (Utilisateur participant : conv.getParticipants()) {
             if (!participant.getId().equals(uid)) {
-                verifierDestinataireAutorise(expediteur, participant);
+                boolean aDejaEcrit = messageContactRepository
+                        .existsByConversationIdAndExpediteurId(conv.getId(), participant.getId());
+                verifierDestinataireAutorise(expediteur, participant, aDejaEcrit);
             }
         }
 
@@ -197,10 +202,14 @@ public class MessagerieServiceImpl implements MessagerieService {
     /**
      * Règles d'échange :
      * - un client écrit uniquement à un professionnel approuvé et actif ;
-     * - un professionnel approuvé écrit uniquement à SES clients (rendez-vous, dossier reçu ou fiche patient) ;
+     * - un professionnel approuvé écrit à SES clients (rendez-vous, dossier reçu ou fiche patient)
+     *   et répond à toute personne qui l'a contacté (même sans relation existante) ;
      * - toute autre combinaison (administrateur, professionnel à professionnel, soi-même) est refusée.
+     *
+     * @param destinataireADejaEcrit le destinataire a déjà écrit dans la conversation
      */
-    private void verifierDestinataireAutorise(Utilisateur expediteur, Utilisateur destinataire) {
+    private void verifierDestinataireAutorise(Utilisateur expediteur, Utilisateur destinataire,
+                                              boolean destinataireADejaEcrit) {
         expediteur = Entites.reel(expediteur);
         destinataire = Entites.reel(destinataire);
         if (expediteur.getId().equals(destinataire.getId())) {
@@ -217,8 +226,12 @@ public class MessagerieServiceImpl implements MessagerieService {
         }
         if (expediteur instanceof Professionnel pro) {
             accesProfessionnel.verifierApprouve(pro);
-            if (!ClientAccounts.isClient(destinataire) || !estClientDe(pro, destinataire)) {
-                throw new ForbiddenException("Vous ne pouvez écrire qu'à vos propres clients");
+            if (!ClientAccounts.isClient(destinataire)) {
+                throw new ForbiddenException("La messagerie est réservée aux échanges entre clients et professionnels");
+            }
+            if (!destinataireADejaEcrit && !estClientDe(pro, destinataire)) {
+                throw new ForbiddenException(
+                        "Vous ne pouvez écrire qu'à vos clients ou répondre à une personne qui vous a contacté");
             }
             return;
         }

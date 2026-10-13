@@ -11,6 +11,9 @@ public interface MessageContactRepository extends JpaRepository<MessageContact, 
 
     List<MessageContact> findByConversationIdOrderByDateEnvoiAsc(String conversationId);
 
+    /** Vrai si cette personne a déjà écrit dans la conversation (prise de contact). */
+    boolean existsByConversationIdAndExpediteurId(String conversationId, String expediteurId);
+
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(m) FROM MessageContact m JOIN m.conversation c JOIN c.participants p WHERE p.id = :userId AND m.expediteur.id != :userId AND (m.lu = false OR m.lu IS NULL)")
     long countUnreadMessagesForUser(@org.springframework.data.repository.query.Param("userId") String userId);
 }

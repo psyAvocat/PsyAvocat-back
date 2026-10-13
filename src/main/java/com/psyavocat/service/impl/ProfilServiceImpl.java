@@ -105,16 +105,7 @@ public class ProfilServiceImpl implements ProfilService {
                 existingAvocat.setAdresse(request.getAdresse());
                 existingAvocat.setModeConsultation(request.getModeConsultation());
                 existingAvocat.setNumeroBarreau(validerNumeroBarreau(request.getNumeroBarreau(), authUser.getFirebaseUid()));
-                if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
-                    List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
-                    for (Specialite s : specialites) {
-                        // Type enregistré par l\'administration (jamais déduit du libellé).
-                        if (!com.psyavocat.service.support.TypesProfessionnel.AVOCAT.equals(com.psyavocat.service.support.TypesProfessionnel.typeDe(s))) {
-                            throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un avocat.");
-                        }
-                    }
-                    existingAvocat.setSpecialites(specialites);
-                }
+                existingAvocat.setSpecialites(specialitesDuType(request.getSpecialiteIds(), com.psyavocat.service.support.TypesProfessionnel.AVOCAT));
                 Avocat saved = avocatRepository.save(existingAvocat);
                 return userMapper.toProfileResponse(saved);
             } else {
@@ -136,16 +127,7 @@ public class ProfilServiceImpl implements ProfilService {
         avocat.setStatutValidation("PENDING");
         avocat.setDateInscription(LocalDate.now());
 
-        if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
-            List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
-            for (Specialite s : specialites) {
-                // Type enregistré par l\'administration (jamais déduit du libellé).
-                if (!com.psyavocat.service.support.TypesProfessionnel.AVOCAT.equals(com.psyavocat.service.support.TypesProfessionnel.typeDe(s))) {
-                    throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un avocat.");
-                }
-            }
-            avocat.setSpecialites(specialites);
-        }
+        avocat.setSpecialites(specialitesDuType(request.getSpecialiteIds(), com.psyavocat.service.support.TypesProfessionnel.AVOCAT));
 
         Avocat saved = avocatRepository.save(avocat);
 
@@ -178,16 +160,7 @@ public class ProfilServiceImpl implements ProfilService {
                 existingPsychologue.setAdresse(request.getAdresse());
                 existingPsychologue.setModeConsultation(request.getModeConsultation());
                 existingPsychologue.setNumeroAgrement(validerNumeroAgrement(request.getNumeroAgrement(), authUser.getFirebaseUid()));
-                if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
-                    List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
-                    for (Specialite s : specialites) {
-                        // Type enregistré par l\'administration (jamais déduit du libellé).
-                        if (!com.psyavocat.service.support.TypesProfessionnel.PSYCHOLOGUE.equals(com.psyavocat.service.support.TypesProfessionnel.typeDe(s))) {
-                            throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un psychologue.");
-                        }
-                    }
-                    existingPsychologue.setSpecialites(specialites);
-                }
+                existingPsychologue.setSpecialites(specialitesDuType(request.getSpecialiteIds(), com.psyavocat.service.support.TypesProfessionnel.PSYCHOLOGUE));
                 Psychologue saved = psychologueRepository.save(existingPsychologue);
                 return userMapper.toProfileResponse(saved);
             } else {
@@ -209,16 +182,7 @@ public class ProfilServiceImpl implements ProfilService {
         psychologue.setStatutValidation("PENDING");
         psychologue.setDateInscription(LocalDate.now());
 
-        if (request.getSpecialiteIds() != null && !request.getSpecialiteIds().isEmpty()) {
-            List<Specialite> specialites = specialiteRepository.findAllById(request.getSpecialiteIds());
-            for (Specialite s : specialites) {
-                // Type enregistré par l\'administration (jamais déduit du libellé).
-                if (!com.psyavocat.service.support.TypesProfessionnel.PSYCHOLOGUE.equals(com.psyavocat.service.support.TypesProfessionnel.typeDe(s))) {
-                    throw new com.psyavocat.exception.BadRequestException("La spécialité '" + s.getNom() + "' n'est pas applicable à un psychologue.");
-                }
-            }
-            psychologue.setSpecialites(specialites);
-        }
+        psychologue.setSpecialites(specialitesDuType(request.getSpecialiteIds(), com.psyavocat.service.support.TypesProfessionnel.PSYCHOLOGUE));
 
         Psychologue saved = psychologueRepository.save(psychologue);
 
@@ -321,21 +285,34 @@ public class ProfilServiceImpl implements ProfilService {
         Utilisateur utilisateur = utilisateurRepository.findById(uid)
                 .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
 
-        if (utilisateur instanceof Professionnel pro) {
-            supprimerImageSiPresente(pro.getPhotoObjectKey());
-            com.psyavocat.storage.model.StoredImage stored = imageStorageService.uploadImage(file, "avatars", pro.getId());
-            pro.setPhotoUrl(stored.getUrl());
-            pro.setPhotoObjectKey(cleObjet(stored));
-        } else if (ClientAccounts.isClient(utilisateur)) {
-            PhotoProfil photo = ClientAccounts.photoOf(utilisateur);
-            supprimerImageSiPresente(photo.getObjectKey());
-            com.psyavocat.storage.model.StoredImage stored = imageStorageService.uploadImage(file, "avatars", utilisateur.getId());
-            photo.setObjectKey(cleObjet(stored));
-        } else {
+        if (!(utilisateur instanceof Professionnel) && !ClientAccounts.isClient(utilisateur)) {
             throw new com.psyavocat.exception.BadRequestException("Ce type de compte ne peut pas enregistrer de photo de profil.");
         }
 
-        Utilisateur saved = utilisateurRepository.save(utilisateur);
+        // Seule la clé d'objet est enregistrée : l'URL d'affichage (présignée, plusieurs
+        // centaines de caractères) est recalculée à chaque lecture par MediaUrlResolver.
+        String nouvelleCle = cleObjet(imageStorageService.uploadImage(file, "avatars", utilisateur.getId()));
+        String ancienneCle;
+        if (utilisateur instanceof Professionnel pro) {
+            ancienneCle = pro.getPhotoObjectKey();
+            pro.setPhotoUrl(null);
+            pro.setPhotoObjectKey(nouvelleCle);
+        } else {
+            PhotoProfil photo = ClientAccounts.photoOf(utilisateur);
+            ancienneCle = photo.getObjectKey();
+            photo.setObjectKey(nouvelleCle);
+        }
+
+        Utilisateur saved;
+        try {
+            saved = utilisateurRepository.saveAndFlush(utilisateur);
+        } catch (RuntimeException e) {
+            // Rien n'est enregistré : la nouvelle image ne doit pas rester orpheline.
+            supprimerImageSiPresente(nouvelleCle);
+            throw e;
+        }
+        // L'ancienne photo n'est retirée qu'une fois la nouvelle enregistrée.
+        supprimerImageSiPresente(ancienneCle);
         return userMapper.toProfileResponse(saved);
     }
 
@@ -359,6 +336,29 @@ public class ProfilServiceImpl implements ProfilService {
 
         Utilisateur saved = utilisateurRepository.save(utilisateur);
         return userMapper.toProfileResponse(saved);
+    }
+
+    /**
+     * Spécialités choisies à l'inscription : au moins une, toutes connues et du
+     * type du professionnel (type enregistré par l'administration, jamais déduit
+     * du libellé). Elles déterminent aussi les catégories de ses publications.
+     */
+    private List<Specialite> specialitesDuType(List<String> ids, String type) {
+        if (ids == null || ids.isEmpty()) {
+            throw new com.psyavocat.exception.BadRequestException("Choisissez au moins une spécialité.");
+        }
+        List<Specialite> specialites = specialiteRepository.findAllById(ids);
+        if (specialites.size() != new java.util.HashSet<>(ids).size()) {
+            throw new com.psyavocat.exception.BadRequestException("Une des spécialités choisies est introuvable.");
+        }
+        String libelle = com.psyavocat.service.support.TypesProfessionnel.AVOCAT.equals(type) ? "un avocat" : "un psychologue";
+        for (Specialite s : specialites) {
+            if (!type.equals(com.psyavocat.service.support.TypesProfessionnel.typeDe(s))) {
+                throw new com.psyavocat.exception.BadRequestException(
+                        "La spécialité '" + s.getNom() + "' n'est pas applicable à " + libelle + ".");
+            }
+        }
+        return specialites;
     }
 
     private void supprimerImageSiPresente(String objectKey) {
