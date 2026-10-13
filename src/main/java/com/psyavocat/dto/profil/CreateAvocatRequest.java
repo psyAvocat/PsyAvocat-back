@@ -1,6 +1,7 @@
 package com.psyavocat.dto.profil;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -34,6 +35,7 @@ public class CreateAvocatRequest {
     @NotBlank(message = "Le numéro de barreau est obligatoire")
     private String numeroBarreau;
 
+    @NotEmpty(message = "Choisissez au moins une spécialité")
     @Builder.Default
     private List<String> specialiteIds = new ArrayList<>();
 }

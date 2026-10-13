@@ -112,6 +112,21 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
+    public void marquerLuesPourRessource(String destinataireId, String ressourceType, String ressourceId) {
+        List<Notification> nonLues = notificationRepository
+                .findByDestinataireIdAndRessourceTypeAndRessourceIdAndLuFalse(destinataireId, ressourceType, ressourceId);
+        if (nonLues.isEmpty()) {
+            return;
+        }
+        LocalDateTime maintenant = LocalDateTime.now();
+        for (Notification n : nonLues) {
+            n.setLu(true);
+            n.setDateLecture(maintenant);
+        }
+        notificationRepository.saveAll(nonLues);
+    }
+
+    @Override
     public void deleteNotification(String id) {
         String uid = authenticationContext.getRequiredFirebaseUid();
         Notification notif = notificationRepository.findById(id)

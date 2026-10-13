@@ -24,5 +24,11 @@ public interface NotificationService {
 
     void markAllAsRead();
 
+    /**
+     * Marque comme lues les notifications d'un utilisateur liées à une ressource
+     * (ex. les « Nouveau message » d'une conversation qu'il vient d'ouvrir).
+     */
+    void marquerLuesPourRessource(String destinataireId, String ressourceType, String ressourceId);
+
     void deleteNotification(String id);
 }

@@ -12,7 +12,11 @@ import java.util.List;
 @Repository
 public interface RendezVousRepository extends JpaRepository<RendezVous, String> {
 
-    List<RendezVous> findByPatientIdOrderByDateHeureDesc(String patientId);
+    /**
+     * Rendez-vous d'un client (patient ou justiciable). Le champ mappé est {@code client} :
+     * un nom dérivé sur « patient » (simple alias Java) échoue à l'exécution.
+     */
+    List<RendezVous> findByClientIdOrderByDateHeureDesc(String clientId);
 
     List<RendezVous> findByProfessionnelIdOrderByDateHeureDesc(String professionnelId);
 

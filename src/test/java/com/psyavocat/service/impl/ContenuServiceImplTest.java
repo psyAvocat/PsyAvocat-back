@@ -121,6 +121,49 @@ class ContenuServiceImplTest {
     }
 
     @Test
+    @DisplayName("Un avocat ne classe son article que dans une de ses spécialités")
+    void specialiteNonDeclaree_refusee() {
+        Specialite famille = new Specialite();
+        famille.setId("spe-famille");
+        famille.setTypeProfessionnel("AVOCAT");
+        Specialite travail = new Specialite();
+        travail.setId("spe-travail");
+        travail.setTypeProfessionnel("AVOCAT");
+        Avocat avocat = avocatValide();
+        avocat.getSpecialites().add(famille);
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("avocat-1");
+        when(utilisateurRepository.findById("avocat-1")).thenReturn(Optional.of(avocat));
+        when(specialiteRepository.findById("spe-travail")).thenReturn(Optional.of(travail));
+
+        ContenuRequest request = requete();
+        request.setSpecialiteId("spe-travail");
+
+        assertThatThrownBy(() -> service.creer(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("vos spécialités");
+        verify(contenuRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Un avocat publie dans une spécialité déclarée à son inscription")
+    void specialiteDeclaree_acceptee() {
+        Specialite famille = new Specialite();
+        famille.setId("spe-famille");
+        famille.setTypeProfessionnel("AVOCAT");
+        Avocat avocat = avocatValide();
+        avocat.getSpecialites().add(famille);
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("avocat-1");
+        when(utilisateurRepository.findById("avocat-1")).thenReturn(Optional.of(avocat));
+        when(specialiteRepository.findById("spe-famille")).thenReturn(Optional.of(famille));
+        when(contenuRepository.save(any(Contenu.class))).thenAnswer(i -> i.getArgument(0));
+
+        ContenuRequest request = requete();
+        request.setSpecialiteId("spe-famille");
+
+        assertThat(service.creer(request).getSpecialiteId()).isEqualTo("spe-famille");
+    }
+
+    @Test
     @DisplayName("Un contenu désactivé n'est plus servi aux clients")
     void contenuDesactive_introuvablePourUnClient() {
         Contenu contenu = new Contenu();

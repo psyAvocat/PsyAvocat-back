@@ -11,4 +11,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
     List<Notification> findByDestinataireIdOrderByDateEnvoiDesc(String destinataireId);
 
     long countByDestinataireIdAndLuFalse(String destinataireId);
+
+    List<Notification> findByDestinataireIdAndRessourceTypeAndRessourceIdAndLuFalse(
+            String destinataireId, String ressourceType, String ressourceId);
 }

@@ -197,7 +197,7 @@ public class RendezVousServiceImpl implements RendezVousService {
 
         List<RendezVous> list = user instanceof Professionnel
                 ? rendezVousRepository.findByProfessionnelIdOrderByDateHeureDesc(uid)
-                : rendezVousRepository.findByPatientIdOrderByDateHeureDesc(uid);
+                : rendezVousRepository.findByClientIdOrderByDateHeureDesc(uid);
 
         // Un rendez-vous confirmé devient PASSE une fois TERMINÉ (fin = début + durée) :
         // entre son début et sa fin, il est « en cours ».
