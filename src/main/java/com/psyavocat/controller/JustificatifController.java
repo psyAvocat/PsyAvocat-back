@@ -35,6 +35,13 @@ public class JustificatifController {
         return ResponseEntity.ok(justificatifService.getMyJustificatifs());
     }
 
+    /** Nouvelles versions de documents déposées par des comptes déjà validés, à vérifier. */
+    @GetMapping("/mises-a-jour")
+    @PreAuthorize("hasRole('ADMINISTRATEUR')")
+    public ResponseEntity<java.util.List<com.psyavocat.dto.justificatif.JustificatifResponseDTO>> getMisesAJourEnAttente() {
+        return ResponseEntity.ok(justificatifService.getMisesAJourEnAttente());
+    }
+
     @GetMapping("/professionnel/{id}")
     @PreAuthorize("hasRole('ADMINISTRATEUR')")
     public ResponseEntity<List<JustificatifResponseDTO>> getJustificatifsByProfessionnel(@PathVariable String id) {

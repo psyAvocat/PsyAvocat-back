@@ -39,6 +39,9 @@ public interface RendezVousService {
      */
     RendezVousResponseDTO annulerRendezVous(String id);
 
+    /** Annulation par le client ou le praticien, avec un motif facultatif transmis à l'autre partie. */
+    RendezVousResponseDTO annulerRendezVous(String id, String motif);
+
     /** Détail d'un rendez-vous dont l'appelant est le client ou le praticien. */
     RendezVousResponseDTO getRendezVous(String id);
 

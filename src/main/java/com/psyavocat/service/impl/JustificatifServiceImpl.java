@@ -48,6 +48,7 @@ public class JustificatifServiceImpl implements JustificatifService {
     private final AccesProfessionnel accesProfessionnel;
     private final com.psyavocat.service.NotificationService notificationService;
     private final com.psyavocat.service.support.JournalDecisions journalDecisions;
+    private final com.psyavocat.repository.AdministrateurRepository administrateurRepository;
     private final Path fileStorageLocation;
 
     public JustificatifServiceImpl(
@@ -57,7 +58,8 @@ public class JustificatifServiceImpl implements JustificatifService {
             DocumentStorageService documentStorageService,
             AccesProfessionnel accesProfessionnel,
             com.psyavocat.service.NotificationService notificationService,
-            com.psyavocat.service.support.JournalDecisions journalDecisions
+            com.psyavocat.service.support.JournalDecisions journalDecisions,
+            com.psyavocat.repository.AdministrateurRepository administrateurRepository
     ) {
         this.justificatifRepository = justificatifRepository;
         this.utilisateurRepository = utilisateurRepository;
@@ -66,6 +68,7 @@ public class JustificatifServiceImpl implements JustificatifService {
         this.accesProfessionnel = accesProfessionnel;
         this.notificationService = notificationService;
         this.journalDecisions = journalDecisions;
+        this.administrateurRepository = administrateurRepository;
         this.fileStorageLocation = Paths.get("uploads/justificatifs").toAbsolutePath().normalize();
 
         try {
@@ -124,8 +127,99 @@ public class JustificatifServiceImpl implements JustificatifService {
             }
         }
 
+        // Mise à jour d'un document déjà validé : le document actuel reste valable jusqu'à la
+        // décision ; une mise à jour encore en attente pour ce même type est remplacée.
+        boolean miseAJour = estDocumentUnique(typeDocument)
+                && !justificatifRepository.findByProfessionnelIdAndTypeDocumentAndStatutValidation(
+                        professionnel.getId(), typeDocument, "VALIDE").isEmpty();
+        if (miseAJour) {
+            for (JustificatifProfessionnel ancien : justificatifRepository.findByProfessionnelIdAndTypeDocumentAndStatutValidation(
+                    professionnel.getId(), typeDocument, "EN_ATTENTE")) {
+                supprimerFichierEtLigne(ancien);
+            }
+        }
+
         JustificatifProfessionnel saved = justificatifRepository.save(justif);
+        // Compte déjà validé : l'administration vérifie tout nouveau dépôt.
+        if ("APPROVED".equalsIgnoreCase(professionnel.getStatutValidation())) {
+            String nom = (professionnel.getPrenom() + " " + professionnel.getNom()).trim();
+            String message = miseAJour
+                    ? nom + " a déposé une nouvelle version de son document « " + libelleType(typeDocument)
+                            + " ». Vérifiez-la depuis Validation des comptes."
+                    : nom + " a déposé un nouveau document (« " + libelleType(typeDocument)
+                            + " »). Vérifiez-le depuis Validation des comptes.";
+            for (com.psyavocat.entity.Administrateur admin : administrateurRepository.findAll()) {
+                notificationService.sendNotification(admin.getId(), "JUSTIFICATIF_A_VERIFIER", message, null);
+            }
+        }
         return mapToDto(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<JustificatifResponseDTO> getMisesAJourEnAttente() {
+        if (!estAdministrateur()) {
+            throw new ForbiddenException("Réservé à l'administration.");
+        }
+        return justificatifRepository
+                .findByStatutValidationAndProfessionnelStatutValidationOrderByDateDepotAsc("EN_ATTENTE", "APPROVED")
+                .stream()
+                .map(j -> {
+                    JustificatifResponseDTO dto = mapToDto(j);
+                    Professionnel p = j.getProfessionnel();
+                    dto.setProfessionnelNom((p.getPrenom() + " " + p.getNom()).trim());
+                    dto.setTypeProfessionnel(com.psyavocat.service.support.TypesProfessionnel.typeDe(p));
+                    if (!estDocumentUnique(j.getTypeDocument())) {
+                        return dto;
+                    }
+                    justificatifRepository.findByProfessionnelIdAndTypeDocumentAndStatutValidation(
+                                    p.getId(), j.getTypeDocument(), "VALIDE").stream().findFirst()
+                            .ifPresent(actuel -> {
+                                dto.setRemplaceId(actuel.getId());
+                                dto.setRemplaceNomFichier(actuel.getNomFichier());
+                            });
+                    return dto;
+                })
+                .toList();
+    }
+
+    /**
+     * Documents dont un professionnel n'a qu'une version en vigueur : une nouvelle version validée
+     * remplace l'ancienne. Les justificatifs complémentaires (JUSTIFICATIF_PROFESSIONNEL) s'ajoutent.
+     */
+    private static final java.util.Set<String> DOCUMENTS_UNIQUES =
+            java.util.Set.of("CV", "PIECE_IDENTITE", "CARTE_PROFESSIONNELLE", "DIPLOME_PSYCHOLOGUE", "DIPLOME");
+
+    private static boolean estDocumentUnique(String typeDocument) {
+        return typeDocument != null && DOCUMENTS_UNIQUES.contains(typeDocument.toUpperCase());
+    }
+
+    /** Libellé lisible d'un type de document (notifications). */
+    private static String libelleType(String typeDocument) {
+        if (typeDocument == null) {
+            return "justificatif";
+        }
+        return switch (typeDocument.toUpperCase()) {
+            case "CV" -> "CV";
+            case "PIECE_IDENTITE" -> "pièce d'identité";
+            case "CARTE_PROFESSIONNELLE" -> "carte professionnelle";
+            case "DIPLOME_PSYCHOLOGUE", "DIPLOME" -> "diplôme";
+            default -> typeDocument.toLowerCase().replace('_', ' ');
+        };
+    }
+
+    /** Retire le fichier (R2 ou disque) puis la ligne en base. */
+    private void supprimerFichierEtLigne(JustificatifProfessionnel justif) {
+        if (justif.getCleObjet() != null && !justif.getCleObjet().isBlank() && documentStorageService.isAvailable()) {
+            documentStorageService.deleteDocument(justif.getCleObjet());
+        } else if (justif.getCheminStockage() != null && !justif.getCheminStockage().startsWith("r2://")) {
+            try {
+                Files.deleteIfExists(Paths.get(justif.getCheminStockage()));
+            } catch (Exception ex) {
+                log.warn("Impossible de supprimer le fichier local : {}", ex.getMessage());
+            }
+        }
+        justificatifRepository.delete(justif);
     }
 
     @Override
@@ -240,16 +334,32 @@ public class JustificatifServiceImpl implements JustificatifService {
         }
         JustificatifProfessionnel justif = justificatifRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Justificatif introuvable"));
+        List<JustificatifProfessionnel> versionsValidees = !estDocumentUnique(justif.getTypeDocument())
+                ? List.of()
+                : justificatifRepository.findByProfessionnelIdAndTypeDocumentAndStatutValidation(
+                        justif.getProfessionnel().getId(), justif.getTypeDocument(), "VALIDE").stream()
+                .filter(v -> !v.getId().equals(justif.getId()))
+                .toList();
+        boolean remplacement = "VALIDE".equals(decision) && !versionsValidees.isEmpty();
         justif.setStatutValidation(decision);
         JustificatifProfessionnel saved = justificatifRepository.save(justif);
+        if (remplacement) {
+            // La nouvelle version fait foi : l'ancienne est retirée (fichier et ligne).
+            versionsValidees.forEach(this::supprimerFichierEtLigne);
+        }
         journalDecisions.enregistrer(com.psyavocat.service.support.JournalDecisions.TYPE_JUSTIFICATIF,
                 saved.getId(), decision, motifNettoye);
         notificationService.sendNotification(saved.getProfessionnel().getId(),
                 "VALIDE".equals(decision) ? "JUSTIFICATIF_VALIDE" : "JUSTIFICATIF_REJETE",
                 "VALIDE".equals(decision)
-                        ? "Votre justificatif « " + saved.getNomFichier() + " » a été validé."
+                        ? (remplacement
+                                ? "La nouvelle version de votre " + libelleType(saved.getTypeDocument()) + " (« "
+                                        + saved.getNomFichier() + " ») a été validée : elle remplace la précédente."
+                                : "Votre justificatif « " + saved.getNomFichier() + " » a été validé.")
                         : "Votre justificatif « " + saved.getNomFichier() + " » a été refusé. Motif : " + motifNettoye
-                                + ". Vous pouvez déposer un nouveau document depuis votre profil.",
+                                + (versionsValidees.isEmpty()
+                                        ? ". Vous pouvez déposer un nouveau document depuis votre profil."
+                                        : ". Votre version actuelle reste en vigueur ; vous pouvez en déposer une autre depuis votre profil."),
                 null);
         return mapToDto(saved);
     }

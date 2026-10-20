@@ -21,4 +21,13 @@ public class JustificatifResponseDTO {
     private Long tailleOctets;
     private String typeMime;
     private String urlVisualisation; // URL présignée temporaire (durée de vie limitée)
+
+    // --- Mise à jour d'un document déjà validé (vue administrateur) ---
+    /** Nom du professionnel (listes de l'administration). */
+    private String professionnelNom;
+    /** AVOCAT ou PSYCHOLOGUE. */
+    private String typeProfessionnel;
+    /** Document validé que celui-ci remplacera s'il est approuvé (null pour un premier dépôt). */
+    private String remplaceNomFichier;
+    private String remplaceId;
 }

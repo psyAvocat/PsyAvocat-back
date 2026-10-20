@@ -17,6 +17,8 @@ public class Signalement {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    /** Commentaire de l'auteur : jusqu'à 1 000 caractères (CreateSignalementRequest). */
+    @Column(length = 1000)
     private String contenuVise;
 
     private String motif;

@@ -12,6 +12,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
 
     long countByDestinataireIdAndLuFalse(String destinataireId);
 
+    List<Notification> findByDestinataireIdAndLuTrue(String destinataireId);
+
     List<Notification> findByDestinataireIdAndRessourceTypeAndRessourceIdAndLuFalse(
             String destinataireId, String ressourceType, String ressourceId);
 }

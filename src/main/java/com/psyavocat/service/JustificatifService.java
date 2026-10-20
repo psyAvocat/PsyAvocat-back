@@ -10,6 +10,9 @@ public interface JustificatifService {
     JustificatifResponseDTO uploadJustificatif(MultipartFile file, String typeDocument);
     List<JustificatifResponseDTO> getMyJustificatifs();
     List<JustificatifResponseDTO> getJustificatifsByProfessionnel(String professionnelId);
+
+    /** Documents déposés par des comptes déjà validés (mises à jour), en attente de vérification. */
+    List<JustificatifResponseDTO> getMisesAJourEnAttente();
     Resource downloadJustificatif(String id);
     String getPresignedUrl(String id);
     void deleteJustificatif(String id);

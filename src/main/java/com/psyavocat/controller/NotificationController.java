@@ -40,6 +40,12 @@ public class NotificationController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Supprime toutes les notifications déjà lues ; renvoie {"supprimees": n}. */
+    @DeleteMapping("/lues")
+    public ResponseEntity<java.util.Map<String, Integer>> supprimerLues() {
+        return ResponseEntity.ok(java.util.Map.of("supprimees", notificationService.supprimerLues()));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteNotification(@PathVariable String id) {
         notificationService.deleteNotification(id);

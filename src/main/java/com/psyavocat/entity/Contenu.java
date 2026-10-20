@@ -20,6 +20,8 @@ public class Contenu {
     @Column(nullable = false)
     private String titre;
 
+    /** Résumé : jusqu'à 500 caractères (ContenuRequest). */
+    @Column(length = 500)
     private String description;
 
     @Column(columnDefinition = "LONGTEXT")
