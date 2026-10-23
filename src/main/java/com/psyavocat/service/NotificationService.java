@@ -31,4 +31,7 @@ public interface NotificationService {
     void marquerLuesPourRessource(String destinataireId, String ressourceType, String ressourceId);
 
     void deleteNotification(String id);
+
+    /** Supprime les notifications déjà lues de l'utilisateur connecté ; renvoie leur nombre. */
+    int supprimerLues();
 }

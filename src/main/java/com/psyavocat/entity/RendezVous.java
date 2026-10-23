@@ -51,6 +51,11 @@ public class RendezVous {
     @JoinColumn(name = "disponibilite_id")
     private Disponibilite disponibilite;
 
+    /** Rendez-vous avocat : soumission acceptée (donc dossier) dont il découle. Null pour un psychologue. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "soumission_id")
+    private SoumissionDossier soumission;
+
     @OneToOne(mappedBy = "rendezVous", cascade = CascadeType.ALL)
     private Paiement paiement;
 

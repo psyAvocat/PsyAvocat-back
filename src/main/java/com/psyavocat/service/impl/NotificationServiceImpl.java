@@ -139,6 +139,14 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.delete(notif);
     }
 
+    @Override
+    public int supprimerLues() {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        List<Notification> lues = notificationRepository.findByDestinataireIdAndLuTrue(uid);
+        notificationRepository.deleteAll(lues);
+        return lues.size();
+    }
+
     /** Titre lisible pour les notifications créées sans titre explicite (appelants historiques). */
     private String titreParDefaut(String type) {
         if (type == null) {
