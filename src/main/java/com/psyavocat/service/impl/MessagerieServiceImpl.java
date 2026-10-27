@@ -336,6 +336,7 @@ public class MessagerieServiceImpl implements MessagerieService {
                 .correspondantPrenom(correspondant != null ? correspondant.getPrenom() : null)
                 .correspondantType(typeDe(correspondant))
                 .correspondantPhotoUrl(correspondant != null ? mediaUrlResolver.photoUrlOf(correspondant) : null)
+                .correspondantEnLigne(correspondant != null && realtimeGateway.estEnLigne(correspondant.getId()))
                 .dernierMessage(dernierMsg)
                 .messagesNonLus(nonLus)
                 .build();

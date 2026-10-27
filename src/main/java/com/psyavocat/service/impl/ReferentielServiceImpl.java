@@ -15,13 +15,14 @@ import com.psyavocat.repository.ContenuRepository;
 import com.psyavocat.repository.DomaineRepository;
 import com.psyavocat.repository.DossierRepository;
 import com.psyavocat.repository.PonderationOrientationRepository;
+import com.psyavocat.repository.ResultatOrientationCategorieRepository;
 import com.psyavocat.repository.ResultatOrientationRepository;
 import com.psyavocat.repository.SpecialiteRepository;
 import com.psyavocat.service.ReferentielService;
+import com.psyavocat.service.support.DomainesFixes;
 import com.psyavocat.service.support.TypesProfessionnel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import java.util.Collections;
 import java.util.List;
@@ -30,9 +31,12 @@ import java.util.Map;
 /**
  * Référentiels gérés par l'administration : domaines, spécialités et catégories de besoin.
  *
- * Règle d'intégrité : chaque élément porte un type de professionnel (AVOCAT ou PSYCHOLOGUE)
- * enregistré et validé ; une spécialité appartient au même univers que son domaine et que
- * ses catégories de besoin. Aucune déduction à partir des libellés.
+ * Règles :
+ * - deux domaines fixes, un par univers (« Psychologique », « Juridique »), créés au démarrage :
+ *   l'administration ne les crée ni ne les supprime, chaque spécialité est rattachée au domaine
+ *   de son univers ;
+ * - les catégories de besoin n'existent que pour l'univers Psychologue ;
+ * - chaque élément porte un type de professionnel enregistré et validé, jamais déduit d'un libellé.
  */
 @Service
 @Transactional
@@ -45,6 +49,7 @@ public class ReferentielServiceImpl implements ReferentielService {
     private final ContenuRepository contenuRepository;
     private final DossierRepository dossierRepository;
     private final ResultatOrientationRepository resultatOrientationRepository;
+    private final ResultatOrientationCategorieRepository resultatOrientationCategorieRepository;
     private final RealtimeGateway realtimeGateway;
 
     public ReferentielServiceImpl(
@@ -55,6 +60,7 @@ public class ReferentielServiceImpl implements ReferentielService {
             ContenuRepository contenuRepository,
             DossierRepository dossierRepository,
             ResultatOrientationRepository resultatOrientationRepository,
+            ResultatOrientationCategorieRepository resultatOrientationCategorieRepository,
             RealtimeGateway realtimeGateway
     ) {
         this.domaineRepository = domaineRepository;
@@ -64,6 +70,7 @@ public class ReferentielServiceImpl implements ReferentielService {
         this.contenuRepository = contenuRepository;
         this.dossierRepository = dossierRepository;
         this.resultatOrientationRepository = resultatOrientationRepository;
+        this.resultatOrientationCategorieRepository = resultatOrientationCategorieRepository;
         this.realtimeGateway = realtimeGateway;
     }
 
@@ -71,52 +78,33 @@ public class ReferentielServiceImpl implements ReferentielService {
     // DOMAINES
     // =========================================================================
 
+    /** Les deux domaines fixes (Psychologique, puis Juridique). */
     @Override
     @Transactional(readOnly = true)
     public List<DomaineDTO> getAllDomaines() {
-        return domaineRepository.findAll().stream().map(this::toDomaineDto).toList();
+        return java.util.Arrays.stream(DomainesFixes.values())
+                .map(f -> domaineRepository.findByCode(f.code()).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .map(this::toDomaineDto)
+                .toList();
     }
 
-    @Override
-    public DomaineDTO createDomaine(DomaineDTO dto) {
-        Domaine domaine = new Domaine();
-        domaine.setNom(texteObligatoire(dto.getNom(), "Le nom du domaine"));
-        domaine.setDescription(dto.getDescription());
-        domaine.setTypeProfessionnel(TypesProfessionnel.exiger(dto.getTypeProfessionnel(), "Domaine"));
-        Domaine saved = domaineRepository.save(domaine);
-        signaler();
-        return toDomaineDto(saved);
-    }
-
+    /** Domaines fixes : seule la description est modifiable (nom et univers ne changent pas). */
     @Override
     public DomaineDTO updateDomaine(String id, DomaineDTO dto) {
         Domaine domaine = domaineRepository.findById(id)
+                .filter(d -> d.getCode() != null)
                 .orElseThrow(() -> new ResourceNotFoundException("Domaine introuvable : " + id));
-        String type = TypesProfessionnel.exiger(dto.getTypeProfessionnel(), "Domaine");
-        if (!type.equals(domaine.getTypeProfessionnel())
-                && domaine.getSpecialites().stream().anyMatch(s -> !type.equals(TypesProfessionnel.typeDe(s)))) {
-            throw new ConflictException("Ce domaine contient des spécialités d'un autre univers : modifiez-les avant de changer son type.");
-        }
-        domaine.setNom(texteObligatoire(dto.getNom(), "Le nom du domaine"));
-        domaine.setDescription(dto.getDescription());
-        domaine.setTypeProfessionnel(type);
+        domaine.setDescription(dto.getDescription() != null ? dto.getDescription().trim() : null);
         Domaine saved = domaineRepository.save(domaine);
         signaler();
         return toDomaineDto(saved);
     }
 
-    @Override
-    public void deleteDomaine(String id) {
-        Domaine domaine = domaineRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Domaine introuvable : " + id));
-
-        long count = specialiteRepository.countByDomaineId(id);
-        if (count > 0) {
-            throw new BadRequestException("Impossible de supprimer ce domaine : " + count + " spécialité(s) y sont rattachée(s). Veuillez d'abord modifier ou supprimer ces spécialités.");
-        }
-
-        domaineRepository.delete(domaine);
-        signaler();
+    /** Domaine fixe d'un univers (créé au démarrage par DomainesFixesInitializer). */
+    private Domaine domaineDeLUnivers(String type) {
+        DomainesFixes fixe = DomainesFixes.pourType(type);
+        return fixe == null ? null : domaineRepository.findByCode(fixe.code()).orElse(null);
     }
 
     // =========================================================================
@@ -191,33 +179,28 @@ public class ReferentielServiceImpl implements ReferentielService {
         signaler();
     }
 
-    /** Type obligatoire et cohérent avec le domaine et les catégories de besoin. */
+    /**
+     * Univers obligatoire ; le domaine est celui de l'univers (fixe) et les catégories de besoin,
+     * réservées aux psychologues, doivent être du même univers.
+     */
     private void appliquer(Specialite specialite, SpecialiteDTO dto) {
         specialite.setNom(texteObligatoire(dto.getNom(), "Le nom de la spécialité"));
         specialite.setDescription(dto.getDescription());
 
-        Domaine domaine = null;
-        if (StringUtils.hasText(dto.getDomaineId())) {
-            domaine = domaineRepository.findById(dto.getDomaineId())
-                    .orElseThrow(() -> new BadRequestException("Domaine inconnu"));
-        }
-
         String type = TypesProfessionnel.normaliser(dto.getTypeProfessionnel());
-        if (type == null && domaine != null) {
-            type = TypesProfessionnel.normaliser(domaine.getTypeProfessionnel());
-        }
         if (type == null) {
             throw new BadRequestException("Indiquez l'univers de la spécialité (AVOCAT ou PSYCHOLOGUE).");
         }
-        if (domaine != null && domaine.getTypeProfessionnel() != null && !type.equals(domaine.getTypeProfessionnel())) {
-            throw new BadRequestException("Le domaine « " + domaine.getNom() + " » appartient à l'univers "
-                    + domaine.getTypeProfessionnel() + " : la spécialité doit être du même univers.");
-        }
         specialite.setTypeProfessionnel(type);
-        specialite.setDomaine(domaine);
+        specialite.setDomaine(domaineDeLUnivers(type));
 
-        if (dto.getCategorieIds() != null) {
-            List<CategorieBesoin> categories = categorieBesoinRepository.findAllById(dto.getCategorieIds());
+        if (TypesProfessionnel.AVOCAT.equals(type)) {
+            // Pas de catégorie de besoin dans l'univers Avocat.
+            specialite.setCategoriesBesoin(new java.util.ArrayList<>());
+        } else if (dto.getCategorieIds() != null) {
+            List<CategorieBesoin> categories = categorieBesoinRepository.findAllById(dto.getCategorieIds()).stream()
+                    .filter(c -> !estSupprimee(c))
+                    .toList();
             if (categories.size() != dto.getCategorieIds().stream().distinct().count()) {
                 throw new BadRequestException("Certaines catégories de besoin sont introuvables.");
             }
@@ -233,6 +216,8 @@ public class ReferentielServiceImpl implements ReferentielService {
     private DomaineDTO toDomaineDto(Domaine d) {
         return DomaineDTO.builder()
                 .id(d.getId())
+                .code(d.getCode())
+                .nombreSpecialites(specialiteRepository.countByDomaineId(d.getId()))
                 .nom(d.getNom())
                 .description(d.getDescription())
                 .typeProfessionnel(d.getTypeProfessionnel())
@@ -280,11 +265,11 @@ public class ReferentielServiceImpl implements ReferentielService {
         String type = TypesProfessionnel.normaliser(typeProfessionnel);
         List<CategorieBesoin> list;
         if (includeInactive) {
-            list = type != null
-                    ? categorieBesoinRepository.findAll().stream()
-                        .filter(c -> type.equalsIgnoreCase(c.getTypeProfessionnel()))
-                        .toList()
-                    : categorieBesoinRepository.findAll();
+            // Inactives comprises, mais jamais les catégories supprimées.
+            list = categorieBesoinRepository.findAll().stream()
+                    .filter(c -> !estSupprimee(c))
+                    .filter(c -> type == null || type.equalsIgnoreCase(c.getTypeProfessionnel()))
+                    .toList();
         } else {
             list = type != null
                     ? categorieBesoinRepository.findByActifTrueAndTypeProfessionnel(type)
@@ -298,7 +283,7 @@ public class ReferentielServiceImpl implements ReferentielService {
         CategorieBesoin categorie = new CategorieBesoin();
         categorie.setNom(texteObligatoire(dto.getNom(), "Le nom de la catégorie"));
         categorie.setDescription(dto.getDescription());
-        categorie.setTypeProfessionnel(TypesProfessionnel.exiger(dto.getTypeProfessionnel(), "Catégorie de besoin"));
+        categorie.setTypeProfessionnel(typeCategorie(dto.getTypeProfessionnel()));
         categorie.setActif(dto.getActif() != null ? dto.getActif() : true);
         CategorieBesoin saved = categorieBesoinRepository.save(categorie);
         signaler();
@@ -307,9 +292,8 @@ public class ReferentielServiceImpl implements ReferentielService {
 
     @Override
     public CategorieBesoinDTO updateCategorieBesoin(String id, CategorieBesoinDTO dto) {
-        CategorieBesoin categorie = categorieBesoinRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Catégorie introuvable : " + id));
-        String type = TypesProfessionnel.exiger(dto.getTypeProfessionnel(), "Catégorie de besoin");
+        CategorieBesoin categorie = categorieExistante(id);
+        String type = typeCategorie(dto.getTypeProfessionnel());
         if (!type.equals(TypesProfessionnel.normaliser(categorie.getTypeProfessionnel()))
                 && categorie.getSpecialites().stream().anyMatch(s -> !type.equals(TypesProfessionnel.typeDe(s)))) {
             throw new ConflictException("Des spécialités d'un autre univers sont liées à cette catégorie : retirez-les avant de changer son type.");
@@ -327,22 +311,69 @@ public class ReferentielServiceImpl implements ReferentielService {
 
     @Override
     public CategorieBesoinDTO toggleActifCategorieBesoin(String id) {
-        CategorieBesoin categorie = categorieBesoinRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Catégorie introuvable : " + id));
+        CategorieBesoin categorie = categorieExistante(id);
         categorie.setActif(categorie.getActif() == null || !categorie.getActif());
         CategorieBesoin saved = categorieBesoinRepository.save(categorie);
         signaler();
         return toCategorieDto(saved);
     }
 
-    /** « Suppression » = désactivation : l'historique des résultats d'orientation est préservé. */
+    /**
+     * Suppression définitive d'une catégorie de besoin (distincte de la désactivation).
+     *
+     * - Refusée tant que des pondérations du questionnaire l'utilisent : elles doivent être
+     *   retirées d'abord, sinon l'orientation continuerait de la calculer.
+     * - Retirée des spécialités qui la référencent.
+     * - Effacée de la base ; seule exception : si des résultats d'orientation passés y font
+     *   référence, elle est conservée pour cet historique mais marquée supprimée et n'apparaît
+     *   plus nulle part (listes actives et inactives, formulaires).
+     */
     @Override
     public void deleteCategorieBesoin(String id) {
-        CategorieBesoin categorie = categorieBesoinRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Catégorie introuvable : " + id));
-        categorie.setActif(false);
-        categorieBesoinRepository.save(categorie);
+        CategorieBesoin categorie = categorieExistante(id);
+
+        long ponderations = ponderationRepository.countByCategorieBesoinId(id);
+        if (ponderations > 0) {
+            throw new ConflictException("Impossible de supprimer cette catégorie : " + ponderations
+                    + " pondération(s) du questionnaire d'orientation l'utilisent. Retirez-les d'abord, ou désactivez la catégorie.");
+        }
+
+        for (Specialite specialite : List.copyOf(categorie.getSpecialites())) {
+            specialite.getCategoriesBesoin().removeIf(c -> id.equals(c.getId()));
+            specialiteRepository.save(specialite);
+        }
+        categorie.getSpecialites().clear();
+
+        boolean historique = resultatOrientationRepository.existsByCategorieBesoinId(id)
+                || resultatOrientationCategorieRepository.existsByCategorieBesoinId(id);
+        if (historique) {
+            categorie.setActif(false);
+            categorie.setSupprime(true);
+            categorieBesoinRepository.save(categorie);
+        } else {
+            categorieBesoinRepository.delete(categorie);
+        }
         signaler();
+    }
+
+    /** Les catégories de besoin n'existent que pour l'univers Psychologue (type facultatif à la saisie). */
+    private String typeCategorie(String valeur) {
+        String type = TypesProfessionnel.normaliser(valeur);
+        if (TypesProfessionnel.AVOCAT.equals(type)) {
+            throw new BadRequestException("Les catégories de besoin sont réservées à l'univers Psychologue.");
+        }
+        return TypesProfessionnel.PSYCHOLOGUE;
+    }
+
+    /** Catégorie non supprimée, sinon « introuvable ». */
+    private CategorieBesoin categorieExistante(String id) {
+        return categorieBesoinRepository.findById(id)
+                .filter(c -> !estSupprimee(c))
+                .orElseThrow(() -> new ResourceNotFoundException("Catégorie introuvable : " + id));
+    }
+
+    private static boolean estSupprimee(CategorieBesoin c) {
+        return Boolean.TRUE.equals(c.getSupprime());
     }
 
     private CategorieBesoinDTO toCategorieDto(CategorieBesoin c) {

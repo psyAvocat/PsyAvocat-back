@@ -379,8 +379,23 @@ public class JustificatifServiceImpl implements JustificatifService {
             }
         }
 
+        // Décision de l'administration : le professionnel voit pourquoi son document a été refusé.
+        String motifRejet = null;
+        java.time.LocalDateTime dateDecision = null;
+        if ("VALIDE".equalsIgnoreCase(justif.getStatutValidation()) || "REJETE".equalsIgnoreCase(justif.getStatutValidation())) {
+            var decision = journalDecisions.derniere(justif.getId());
+            if (decision != null) {
+                dateDecision = decision.getDateDecision();
+                if ("REJETE".equalsIgnoreCase(justif.getStatutValidation())) {
+                    motifRejet = decision.getMotif();
+                }
+            }
+        }
+
         return JustificatifResponseDTO.builder()
                 .id(justif.getId())
+                .motifRejet(motifRejet)
+                .dateDecision(dateDecision)
                 .nomFichier(justif.getNomFichier())
                 .typeDocument(justif.getTypeDocument())
                 .statutValidation(justif.getStatutValidation())

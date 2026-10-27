@@ -9,5 +9,6 @@ import java.util.Optional;
 @Repository
 public interface DomaineRepository extends JpaRepository<Domaine, String> {
     Optional<Domaine> findByNom(String nom);
+    Optional<Domaine> findByCode(String code);
     boolean existsByNom(String nom);
 }

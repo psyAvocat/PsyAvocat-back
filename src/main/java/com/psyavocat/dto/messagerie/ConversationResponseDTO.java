@@ -30,4 +30,6 @@ public class ConversationResponseDTO {
     /** AVOCAT, PSYCHOLOGUE ou CLIENT : permet de ranger la conversation dans le bon univers. */
     private String correspondantType;
     private String correspondantPhotoUrl;
+    /** Le correspondant a une connexion temps réel ouverte (web ou mobile) au moment de la lecture. */
+    private Boolean correspondantEnLigne;
 }

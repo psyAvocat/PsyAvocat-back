@@ -13,11 +13,7 @@ public interface ReferentielService {
 
     List<DomaineDTO> getAllDomaines();
 
-    DomaineDTO createDomaine(DomaineDTO dto);
-
     DomaineDTO updateDomaine(String id, DomaineDTO dto);
-
-    void deleteDomaine(String id);
 
     List<SpecialiteDTO> getAllSpecialites();
     List<SpecialiteDTO> getSpecialites(String typeProfessionnel);

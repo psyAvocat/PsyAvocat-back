@@ -95,4 +95,39 @@ class FirebaseMessagingServiceTest {
 
         assertEquals("data-msg-999", result);
     }
+
+    @Test
+    @DisplayName("Notifications : priorité haute et canal Android de l'application (affichage application fermée)")
+    void notifications_prioriteHauteEtCanal() throws Exception {
+        BatchResponse reponse = mock(BatchResponse.class);
+        org.mockito.ArgumentCaptor<MulticastMessage> captor = org.mockito.ArgumentCaptor.forClass(MulticastMessage.class);
+        when(firebaseMessaging.sendEachForMulticast(captor.capture())).thenReturn(reponse);
+
+        messagingService.sendToMultipleDevices(List.of("t1"), "Rappel", "Rendez-vous demain", Map.of());
+
+        Object android = champDeType(captor.getValue(), com.google.firebase.messaging.AndroidConfig.class);
+        assertNotNull(android, "configuration Android absente");
+        assertEquals("high", champ(android, "priority"));
+        Object notification = champDeType(android, com.google.firebase.messaging.AndroidNotification.class);
+        assertEquals(FirebaseMessagingService.CANAL_ANDROID, champ(notification, "channelId"));
+        assertNotNull(champDeType(captor.getValue(), com.google.firebase.messaging.ApnsConfig.class),
+                "configuration iOS absente");
+    }
+
+    /** Les messages FCM n'exposent pas leurs champs : lecture par réflexion (test uniquement). */
+    private static Object champDeType(Object objet, Class<?> type) throws IllegalAccessException {
+        for (java.lang.reflect.Field f : objet.getClass().getDeclaredFields()) {
+            if (type.isAssignableFrom(f.getType())) {
+                f.setAccessible(true);
+                return f.get(objet);
+            }
+        }
+        return null;
+    }
+
+    private static Object champ(Object objet, String nom) throws ReflectiveOperationException {
+        java.lang.reflect.Field f = objet.getClass().getDeclaredField(nom);
+        f.setAccessible(true);
+        return f.get(objet);
+    }
 }

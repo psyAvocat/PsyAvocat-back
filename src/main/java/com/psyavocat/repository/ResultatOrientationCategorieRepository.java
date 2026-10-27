@@ -10,4 +10,6 @@ import java.util.List;
 public interface ResultatOrientationCategorieRepository extends JpaRepository<ResultatOrientationCategorie, String> {
 
     List<ResultatOrientationCategorie> findByResultatOrientationIdOrderByRangAsc(String resultatOrientationId);
+
+    boolean existsByCategorieBesoinId(String categorieBesoinId);
 }

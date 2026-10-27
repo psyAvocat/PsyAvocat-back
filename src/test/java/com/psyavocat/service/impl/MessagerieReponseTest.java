@@ -105,4 +105,27 @@ class MessagerieReponseTest {
         assertThatThrownBy(() -> service.createConversation(request)).isInstanceOf(ForbiddenException.class);
         verify(conversationRepository, never()).save(any());
     }
+
+    @Test
+    @DisplayName("Le professionnel démarre une conversation avec l'un de ses clients : créée")
+    void nouvelleConversationAvecUnClient_creee() {
+        when(conversationRepository.findByParticipantId("avocat-1")).thenReturn(List.of());
+        when(rendezVousRepository.existsByProfessionnelIdAndPatientId("avocat-1", "client-1")).thenReturn(true);
+        when(conversationRepository.save(any(Conversation.class))).thenAnswer(i -> {
+            Conversation c = i.getArgument(0);
+            c.setId("conv-nouvelle");
+            return c;
+        });
+        CreateConversationRequest request = new CreateConversationRequest();
+        request.setDestinataireId("client-1");
+        request.setPremierMessage("Bonjour, je reviens vers vous.");
+
+        var dto = service.createConversation(request);
+
+        assertThat(dto.getId()).isEqualTo("conv-nouvelle");
+        verify(messageContactRepository).save(argThat(m ->
+                "Bonjour, je reviens vers vous.".equals(m.getContenu()) && m.getExpediteur() == avocat));
+        // Le client est prévenu (notification + push).
+        verify(notificationService).notifier(argThat(e -> "client-1".equals(e.destinataireId())));
+    }
 }

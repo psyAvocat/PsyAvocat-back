@@ -132,4 +132,29 @@ class JustificatifMiseAJourTest {
         assertThat(liste.get(0).getProfessionnelNom()).isEqualTo("Awa Diallo");
         assertThat(liste.get(0).getRemplaceNomFichier()).isEqualTo("cv-2025.pdf");
     }
+
+    @Test
+    @DisplayName("Le professionnel voit le motif de refus de ses documents (et tous ses documents)")
+    void professionnel_voitLeMotifDeRefus() {
+        JournalDecisions journal = mock(JournalDecisions.class);
+        JustificatifServiceImpl serviceAvecJournal = new JustificatifServiceImpl(repository, utilisateurRepository,
+                authenticationContext, storage, new AccesProfessionnel(authenticationContext, utilisateurRepository),
+                notificationService, journal, administrateurRepository);
+        JustificatifProfessionnel refuse = document("cv-refuse", "REJETE", "cv-flou.pdf");
+        var date = java.time.LocalDateTime.of(2026, 10, 20, 9, 30);
+        when(journal.derniere("cv-refuse")).thenReturn(com.psyavocat.dto.admin.DecisionAdministrativeDTO.builder()
+                .decision("REJETE").motif("Document illisible").dateDecision(date).build());
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("avocat-1");
+        when(repository.findByProfessionnelId("avocat-1")).thenReturn(List.of(cvActuel, nouveauCv, refuse));
+
+        var liste = serviceAvecJournal.getMyJustificatifs();
+
+        assertThat(liste).hasSize(3);
+        var dtoRefuse = liste.stream().filter(d -> d.getId().equals("cv-refuse")).findFirst().orElseThrow();
+        assertThat(dtoRefuse.getMotifRejet()).isEqualTo("Document illisible");
+        assertThat(dtoRefuse.getDateDecision()).isEqualTo(date);
+        // Aucun motif pour un document en attente ou validé.
+        assertThat(liste.stream().filter(d -> !d.getId().equals("cv-refuse")))
+                .allSatisfy(d -> assertThat(d.getMotifRejet()).isNull());
+    }
 }

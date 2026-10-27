@@ -14,6 +14,8 @@ import java.util.List;
 @AllArgsConstructor
 public class Avocat extends Professionnel {
 
+    /** Numéro de barreau, unique entre tous les avocats (enregistré en majuscules, sans espaces). */
+    @Column(unique = true)
     private String numeroBarreau;
 
     @OneToMany(mappedBy = "avocat", cascade = CascadeType.ALL, orphanRemoval = true)

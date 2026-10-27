@@ -6,6 +6,10 @@ import java.util.Map;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
+import com.google.firebase.messaging.AndroidConfig;
+import com.google.firebase.messaging.AndroidNotification;
+import com.google.firebase.messaging.ApnsConfig;
+import com.google.firebase.messaging.Aps;
 import com.google.firebase.messaging.BatchResponse;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
@@ -25,6 +29,27 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @SuppressWarnings("deprecation")
 public class FirebaseMessagingService {
+
+    /** Canal Android créé par l'application mobile (MainActivity) : priorité haute, avec son. */
+    public static final String CANAL_ANDROID = "high_importance_channel";
+
+    /**
+     * Android : priorité haute et canal de l'application, pour que la notification s'affiche
+     * même application fermée ou en arrière-plan (y compris en mode économie d'énergie).
+     */
+    static final AndroidConfig ANDROID = AndroidConfig.builder()
+            .setPriority(AndroidConfig.Priority.HIGH)
+            .setNotification(AndroidNotification.builder()
+                    .setChannelId(CANAL_ANDROID)
+                    .setDefaultSound(true)
+                    .build())
+            .build();
+
+    /** iOS : affichage immédiat avec son (priorité APNs 10). */
+    static final ApnsConfig APNS = ApnsConfig.builder()
+            .putHeader("apns-priority", "10")
+            .setAps(Aps.builder().setSound("default").build())
+            .build();
 
     private final ObjectProvider<FirebaseMessaging> firebaseMessagingProvider;
 
@@ -56,7 +81,9 @@ public class FirebaseMessagingService {
 
             Message.Builder messageBuilder = Message.builder()
                     .setToken(targetToken)
-                    .setNotification(notification);
+                    .setNotification(notification)
+                    .setAndroidConfig(ANDROID)
+                    .setApnsConfig(APNS);
 
             if (data != null && !data.isEmpty()) {
                 messageBuilder.putAllData(data);
@@ -98,7 +125,9 @@ public class FirebaseMessagingService {
 
             MulticastMessage.Builder multicastBuilder = MulticastMessage.builder()
                     .addAllTokens(targetTokens)
-                    .setNotification(notification);
+                    .setNotification(notification)
+                    .setAndroidConfig(ANDROID)
+                    .setApnsConfig(APNS);
 
             if (data != null && !data.isEmpty()) {
                 multicastBuilder.putAllData(data);

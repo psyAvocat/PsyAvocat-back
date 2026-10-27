@@ -23,7 +23,7 @@ import java.util.List;
 @AllArgsConstructor
 public class QuestionCompleteCreateRequest {
 
-    @NotBlank(message = "L'identifiant du questionnaire est obligatoire")
+    /** Ignoré : toute question appartient au questionnaire d'orientation psychologique. */
     private String questionnaireId;
 
     @NotBlank(message = "Le texte de la question est obligatoire")

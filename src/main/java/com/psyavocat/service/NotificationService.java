@@ -25,6 +25,12 @@ public interface NotificationService {
     void markAllAsRead();
 
     /**
+     * Marque comme lues les notifications non lues d'un type de ressource (ex. RENDEZ_VOUS)
+     * lorsque l'utilisateur ouvre la page correspondante ; renvoie leur nombre.
+     */
+    int marquerLuesParType(String ressourceType);
+
+    /**
      * Marque comme lues les notifications d'un utilisateur liées à une ressource
      * (ex. les « Nouveau message » d'une conversation qu'il vient d'ouvrir).
      */

@@ -10,6 +10,8 @@ import com.psyavocat.service.support.TypesProfessionnel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,7 @@ import java.util.stream.Stream;
  */
 @Slf4j
 @Component
+@Order(Ordered.LOWEST_PRECEDENCE - 100) // avant DomainesFixesInitializer
 public class ReferentielTypeMigration implements ApplicationRunner {
 
     private final SpecialiteRepository specialiteRepository;

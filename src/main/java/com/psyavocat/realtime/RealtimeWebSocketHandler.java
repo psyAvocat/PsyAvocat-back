@@ -14,19 +14,27 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 public class RealtimeWebSocketHandler extends TextWebSocketHandler {
 
     private final RealtimeGateway gateway;
+    private final PresenceService presenceService;
 
-    public RealtimeWebSocketHandler(RealtimeGateway gateway) {
+    public RealtimeWebSocketHandler(RealtimeGateway gateway, PresenceService presenceService) {
         this.gateway = gateway;
+        this.presenceService = presenceService;
     }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        gateway.enregistrer(uidDe(session), session);
+        String uid = uidDe(session);
+        if (gateway.enregistrer(uid, session)) {
+            presenceService.signalerChangement(uid, true);
+        }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        gateway.retirer(uidDe(session), session);
+        String uid = uidDe(session);
+        if (gateway.retirer(uid, session)) {
+            presenceService.signalerChangement(uid, false);
+        }
     }
 
     @Override

@@ -14,4 +14,6 @@ public interface PonderationOrientationRepository extends JpaRepository<Ponderat
     boolean existsByReponseIdAndSpecialiteId(String reponseId, String specialiteId);
 
     boolean existsBySpecialiteId(String specialiteId);
+
+    long countByCategorieBesoinId(String categorieBesoinId);
 }

@@ -34,6 +34,12 @@ public class NotificationController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Notifications d'un type de ressource marquées lues (ex. ouverture de la page Rendez-vous). */
+    @PatchMapping("/lu-type/{ressourceType}")
+    public ResponseEntity<java.util.Map<String, Integer>> marquerLuesParType(@PathVariable String ressourceType) {
+        return ResponseEntity.ok(java.util.Map.of("marquees", notificationService.marquerLuesParType(ressourceType)));
+    }
+
     @PatchMapping("/lu-tout")
     public ResponseEntity<Void> markAllAsRead() {
         notificationService.markAllAsRead();

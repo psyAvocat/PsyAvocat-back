@@ -29,7 +29,7 @@ public class QuestionCreateRequest {
 
     private String typeReponse;
 
-    @NotBlank(message = "L'identifiant du questionnaire est obligatoire")
+    /** Ignoré : toute question appartient au questionnaire d'orientation psychologique. */
     private String questionnaireId;
 
     public static QuestionCreateRequestBuilder builder() {

@@ -98,6 +98,19 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
+    public int marquerLuesParType(String ressourceType) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        List<Notification> nonLues = notificationRepository.findByDestinataireIdAndRessourceTypeAndLuFalse(uid, ressourceType);
+        LocalDateTime maintenant = LocalDateTime.now();
+        for (Notification n : nonLues) {
+            n.setLu(true);
+            n.setDateLecture(maintenant);
+        }
+        notificationRepository.saveAll(nonLues);
+        return nonLues.size();
+    }
+
+    @Override
     public void markAllAsRead() {
         String uid = authenticationContext.getRequiredFirebaseUid();
         LocalDateTime maintenant = LocalDateTime.now();

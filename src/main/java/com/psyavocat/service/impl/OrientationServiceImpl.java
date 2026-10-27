@@ -114,16 +114,24 @@ public class OrientationServiceImpl implements OrientationService {
     // Lecture publique (clients)
     // ------------------------------------------------------------------
 
-    /** Questionnaires publiés : uniquement actifs et psychologiques. */
+    /** Questionnaire publié : le questionnaire d'orientation psychologique (une liste d'au plus un élément). */
     @Override
     @Transactional(readOnly = true)
     public List<QuestionnaireDTO> getQuestionnaires(String type) {
         if (type != null && !type.isBlank() && !TYPE_PSYCHOLOGIQUE.equalsIgnoreCase(type.trim())) {
             return List.of();
         }
-        return questionnaireRepository.findAllByTypeAndActifTrue(TYPE_PSYCHOLOGIQUE).stream()
-                .map(this::toQuestionnaireDto)
-                .toList();
+        return questionnairePublie().map(this::toQuestionnaireDto).stream().toList();
+    }
+
+    /**
+     * Le questionnaire d'orientation psychologique s'il est publié (repéré par son code) ;
+     * à défaut, le questionnaire psychologique actif (données antérieures à l'initialisation).
+     */
+    private java.util.Optional<Questionnaire> questionnairePublie() {
+        return questionnaireRepository.findByCode(com.psyavocat.service.support.QuestionnaireOrientation.CODE)
+                .filter(q -> Boolean.TRUE.equals(q.getActif()))
+                .or(() -> questionnaireRepository.findAllByTypeAndActifTrue(TYPE_PSYCHOLOGIQUE).stream().findFirst());
     }
 
     /** Questionnaire publié du type demandé ; jamais de repli sur un questionnaire inactif. */
@@ -133,8 +141,7 @@ public class OrientationServiceImpl implements OrientationService {
         if (type == null || !TYPE_PSYCHOLOGIQUE.equalsIgnoreCase(type.trim())) {
             throw new ResourceNotFoundException("Aucun questionnaire d'orientation n'est proposé pour ce parcours.");
         }
-        return questionnaireRepository.findAllByTypeAndActifTrue(TYPE_PSYCHOLOGIQUE).stream()
-                .findFirst()
+        return questionnairePublie()
                 .map(this::toQuestionnaireDto)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Aucun questionnaire d'orientation n'est publié pour le moment."));

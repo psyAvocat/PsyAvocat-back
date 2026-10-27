@@ -13,6 +13,8 @@ public interface ResultatOrientationRepository extends JpaRepository<ResultatOri
 
     boolean existsBySpecialiteId(String specialiteId);
 
+    boolean existsByCategorieBesoinId(String categorieBesoinId);
+
     default List<ResultatOrientation> findByPatientIdOrderByDateEvaluationDesc(String patientId) {
         return findByUtilisateurIdOrderByDateEvaluationDesc(patientId);
     }

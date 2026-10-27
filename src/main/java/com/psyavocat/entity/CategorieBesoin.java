@@ -30,6 +30,12 @@ public class CategorieBesoin {
 
     private Boolean actif;
 
+    /**
+     * Catégorie supprimée par l'administration mais conservée en base parce que des
+     * résultats d'orientation passés y font référence : elle n'apparaît plus nulle part.
+     */
+    private Boolean supprime;
+
     @ManyToMany(mappedBy = "categoriesBesoin")
     private List<Specialite> specialites = new ArrayList<>();
 }

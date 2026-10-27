@@ -4,6 +4,7 @@ import com.psyavocat.dto.profil.CreateAvocatRequest;
 import com.psyavocat.entity.Avocat;
 import com.psyavocat.entity.Specialite;
 import com.psyavocat.exception.BadRequestException;
+import com.psyavocat.exception.ConflictException;
 import com.psyavocat.mapper.UserMapper;
 import com.psyavocat.repository.*;
 import com.psyavocat.security.AuthenticatedUser;
@@ -30,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-/** Une spécialité au moins est exigée à l'inscription d'un professionnel. */
+/** Inscription d'un avocat : au moins une spécialité, numéro de barreau unique. */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ProfilSpecialitesTest {
@@ -80,7 +81,7 @@ class ProfilSpecialitesTest {
         assertThatThrownBy(() -> service.createAvocatProfile(requete(List.of())))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("au moins une spécialité");
-        verify(avocatRepository, never()).save(any());
+        verify(avocatRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -109,12 +110,60 @@ class ProfilSpecialitesTest {
     void avecSpecialite_enregistre() {
         Specialite famille = specialite("spe-famille", "AVOCAT");
         when(specialiteRepository.findAllById(List.of("spe-famille"))).thenReturn(List.of(famille));
-        when(avocatRepository.save(any(Avocat.class))).thenAnswer(i -> i.getArgument(0));
+        when(avocatRepository.saveAndFlush(any(Avocat.class))).thenAnswer(i -> i.getArgument(0));
         when(administrateurRepository.findAll()).thenReturn(List.of());
 
         service.createAvocatProfile(requete(List.of("spe-famille")));
 
-        verify(avocatRepository).save(argThat(a -> a.getSpecialites().contains(famille)));
+        verify(avocatRepository).saveAndFlush(argThat(a -> a.getSpecialites().contains(famille)));
         assertThat(famille.getTypeProfessionnel()).isEqualTo("AVOCAT");
+    }
+
+    // ------------------------------------------------------------------
+    // Numéro de barreau
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("Numéro de barreau déjà utilisé (casse et espaces ignorés) : inscription refusée")
+    void numeroBarreauEnDouble_refuse() {
+        when(specialiteRepository.findAllById(List.of("spe-famille")))
+                .thenReturn(List.of(specialite("spe-famille", "AVOCAT")));
+        when(avocatRepository.numeroBarreauDejaUtilise("B-123", "uid-avocat")).thenReturn(true);
+        CreateAvocatRequest request = requete(List.of("spe-famille"));
+        request.setNumeroBarreau("  b -1 23 ");
+
+        assertThatThrownBy(() -> service.createAvocatProfile(request))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("numéro de barreau est déjà utilisé");
+        verify(avocatRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("Numéro de barreau enregistré sous forme normalisée")
+    void numeroBarreau_normalise() {
+        when(specialiteRepository.findAllById(List.of("spe-famille")))
+                .thenReturn(List.of(specialite("spe-famille", "AVOCAT")));
+        when(avocatRepository.saveAndFlush(any(Avocat.class))).thenAnswer(i -> i.getArgument(0));
+        when(administrateurRepository.findAll()).thenReturn(List.of());
+        CreateAvocatRequest request = requete(List.of("spe-famille"));
+        request.setNumeroBarreau(" bar 75 001 ");
+
+        service.createAvocatProfile(request);
+
+        verify(avocatRepository).numeroBarreauDejaUtilise("BAR75001", "uid-avocat");
+        verify(avocatRepository).saveAndFlush(argThat(a -> "BAR75001".equals(a.getNumeroBarreau())));
+    }
+
+    @Test
+    @DisplayName("Inscriptions simultanées : la contrainte d'unicité de la base est traduite en conflit")
+    void numeroBarreau_contrainteBase() {
+        when(specialiteRepository.findAllById(List.of("spe-famille")))
+                .thenReturn(List.of(specialite("spe-famille", "AVOCAT")));
+        when(avocatRepository.saveAndFlush(any(Avocat.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("uk_numero_barreau"));
+
+        assertThatThrownBy(() -> service.createAvocatProfile(requete(List.of("spe-famille"))))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("numéro de barreau est déjà utilisé");
     }
 }
