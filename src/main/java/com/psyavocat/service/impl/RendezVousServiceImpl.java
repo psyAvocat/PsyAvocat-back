@@ -497,16 +497,22 @@ public class RendezVousServiceImpl implements RendezVousService {
     }
 
     private RendezVousResponseDTO toDto(RendezVous rdv) {
+        LocalDateTime fin = finDe(rdv);
+        boolean estPasse = (fin != null && fin.isBefore(LocalDateTime.now()))
+                || "PASSE".equalsIgnoreCase(rdv.getStatut())
+                || "ANNULE".equalsIgnoreCase(rdv.getStatut());
+        String lienVisioActif = estPasse ? null : rdv.getLienVisio();
+
         RendezVousResponseDTO.RendezVousResponseDTOBuilder builder = RendezVousResponseDTO.builder()
                 .id(rdv.getId())
                 .dateHeure(rdv.getDateHeure())
-                .dateFin(finDe(rdv))
+                .dateFin(fin)
                 .dureeMinutes(rdv.getDureeMinutes())
                 .statut(rdv.getStatut())
                 .mode(rdv.getMode())
                 .motif(rdv.getMotif())
                 .devise(rdv.getDevise())
-                .lienVisio(rdv.getLienVisio())
+                .lienVisio(lienVisioActif)
                 .adresseCabinet(rdv.getAdresseCabinet())
                 .montantTotal(rdv.getMontantTotal())
                 .disponibiliteId(rdv.getDisponibilite() != null ? rdv.getDisponibilite().getId() : null);
