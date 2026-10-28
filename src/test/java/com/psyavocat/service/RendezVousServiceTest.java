@@ -81,6 +81,9 @@ class RendezVousServiceTest {
     @Mock
     private com.psyavocat.mapper.MediaUrlResolver mediaUrlResolver;
 
+    @Mock
+    private MessagerieService messagerieService;
+
     private RendezVousServiceImpl rendezVousService;
 
     private Utilisateur patient;
@@ -101,7 +104,8 @@ class RendezVousServiceTest {
                 utilisateurRepository,
                 authenticationContext,
                 evenements,
-                mediaUrlResolver
+                mediaUrlResolver,
+                messagerieService
         );
 
         patient = new Patient();

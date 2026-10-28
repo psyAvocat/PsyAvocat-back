@@ -12,6 +12,7 @@ import com.psyavocat.exception.ResourceNotFoundException;
 import com.psyavocat.mapper.MediaUrlResolver;
 import com.psyavocat.repository.*;
 import com.psyavocat.security.AuthenticationContext;
+import com.psyavocat.service.MessagerieService;
 import com.psyavocat.service.PaiementService;
 import com.psyavocat.service.RendezVousService;
 import com.psyavocat.service.notification.RendezVousEvenements;
@@ -48,6 +49,7 @@ public class RendezVousServiceImpl implements RendezVousService {
     private final AuthenticationContext authenticationContext;
     private final RendezVousEvenements evenements;
     private final MediaUrlResolver mediaUrlResolver;
+    private final MessagerieService messagerieService;
 
     public RendezVousServiceImpl(
             RendezVousRepository rendezVousRepository,
@@ -60,7 +62,8 @@ public class RendezVousServiceImpl implements RendezVousService {
             UtilisateurRepository utilisateurRepository,
             AuthenticationContext authenticationContext,
             RendezVousEvenements evenements,
-            MediaUrlResolver mediaUrlResolver
+            MediaUrlResolver mediaUrlResolver,
+            MessagerieService messagerieService
     ) {
         this.rendezVousRepository = rendezVousRepository;
         this.disponibiliteRepository = disponibiliteRepository;
@@ -73,6 +76,7 @@ public class RendezVousServiceImpl implements RendezVousService {
         this.authenticationContext = authenticationContext;
         this.evenements = evenements;
         this.mediaUrlResolver = mediaUrlResolver;
+        this.messagerieService = messagerieService;
     }
 
     // ------------------------------------------------------------------
@@ -173,6 +177,7 @@ public class RendezVousServiceImpl implements RendezVousService {
         rdv.setMontantTotal(montantTotal);
         rdv.setMontantAcompte(montantAcompte);
         rdv.setAdresseCabinet("CABINET".equals(mode) ? pro.getAdresse() : null);
+        rdv.setLienVisio("VISIO".equalsIgnoreCase(mode) ? genererLienVisioPsyAvocat(disp.getId()) : null);
         rdv.setPatient(client);
         rdv.setProfessionnel(pro);
         rdv.setDisponibilite(disp);
@@ -183,6 +188,12 @@ public class RendezVousServiceImpl implements RendezVousService {
         // Acompte de 20 % via le mécanisme de paiement existant.
         Paiement paiement = paiementService.traiterAcompteRendezVous(client, savedRdv, montantAcompte);
         savedRdv.setPaiement(paiement);
+
+        // Garantit que le client apparaît immédiatement dans la liste de messagerie du professionnel (et inversement).
+        messagerieService.assurerConversationEntre(client, pro);
+        if ("VISIO".equalsIgnoreCase(mode)) {
+            messagerieService.envoyerMessageVisioRendezVous(savedRdv, false);
+        }
 
         evenements.rendezVousConfirme(savedRdv);
         evenements.creneauMisAJour(disp);
@@ -207,8 +218,16 @@ public class RendezVousServiceImpl implements RendezVousService {
         // entre son début et sa fin, il est « en cours ».
         LocalDateTime now = LocalDateTime.now();
         for (RendezVous r : list) {
+            boolean modifie = false;
             if ("CONFIRME".equalsIgnoreCase(r.getStatut()) && finDe(r) != null && finDe(r).isBefore(now)) {
                 r.setStatut("PASSE");
+                modifie = true;
+            }
+            if ("VISIO".equalsIgnoreCase(r.getMode()) && doitGenererLienVisio(r.getLienVisio())) {
+                r.setLienVisio(genererLienVisioPsyAvocat(r.getId()));
+                modifie = true;
+            }
+            if (modifie) {
                 rendezVousRepository.save(r);
             }
         }
@@ -217,9 +236,13 @@ public class RendezVousServiceImpl implements RendezVousService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public RendezVousResponseDTO getRendezVous(String id) {
-        return toDto(rendezVousDuParticipant(id));
+        RendezVous rdv = rendezVousDuParticipant(id);
+        if ("VISIO".equalsIgnoreCase(rdv.getMode()) && doitGenererLienVisio(rdv.getLienVisio())) {
+            rdv.setLienVisio(genererLienVisioPsyAvocat(rdv.getId()));
+            rendezVousRepository.save(rdv);
+        }
+        return toDto(rdv);
     }
 
     // ------------------------------------------------------------------
@@ -256,7 +279,14 @@ public class RendezVousServiceImpl implements RendezVousService {
         rdv.setDisponibilite(nouveau);
         rdv.setDateHeure(debutDe(nouveau));
         rdv.setDureeMinutes(dureeDe(nouveau));
+        if ("VISIO".equalsIgnoreCase(rdv.getMode()) && doitGenererLienVisio(rdv.getLienVisio())) {
+            rdv.setLienVisio(genererLienVisioPsyAvocat(rdv.getId()));
+        }
         RendezVous saved = rendezVousRepository.save(rdv);
+
+        if ("VISIO".equalsIgnoreCase(saved.getMode())) {
+            messagerieService.envoyerMessageVisioRendezVous(saved, true);
+        }
 
         evenements.rendezVousModifie(saved);
         evenements.creneauMisAJour(nouveau);
@@ -435,6 +465,35 @@ public class RendezVousServiceImpl implements RendezVousService {
         }
         int duree = r.getDureeMinutes() != null ? r.getDureeMinutes() : DUREE_PAR_DEFAUT_MINUTES;
         return r.getDateHeure().plusMinutes(duree);
+    }
+
+    private boolean doitGenererLienVisio(String lienActuel) {
+        return lienActuel == null || lienActuel.isBlank() || lienActuel.contains("meet.google.com") || lienActuel.contains("meet.jit.si");
+    }
+
+    /**
+     * Génère un lien de salle de visioconférence WebRTC Jitsi Meet fonctionnelle et intégrable
+     * directement dans PsyAvocat ({@code https://meet.jit.si/PsyAvocat-Consultation-xxx-xxxx-xxx}).
+     */
+    private String genererLienVisioPsyAvocat(String seed) {
+        String source = (seed != null && !seed.isBlank()) ? seed : java.util.UUID.randomUUID().toString();
+        long hash = 1125899906842597L;
+        for (int i = 0; i < source.length(); i++) {
+            hash = 31L * hash + source.charAt(i);
+        }
+        hash = Math.abs(hash);
+        char[] chars = new char[10];
+        for (int i = 0; i < 10; i++) {
+            chars[i] = (char) ('a' + (int) ((hash + i * 7L) % 26));
+            hash /= 26;
+            if (hash == 0) {
+                hash = Math.abs((long) source.hashCode() + (i + 1) * 9973L);
+            }
+        }
+        return "https://meet.ffmuc.net/PsyAvocat-Consultation-"
+                + new String(chars, 0, 3) + "-"
+                + new String(chars, 3, 4) + "-"
+                + new String(chars, 7, 3);
     }
 
     private RendezVousResponseDTO toDto(RendezVous rdv) {

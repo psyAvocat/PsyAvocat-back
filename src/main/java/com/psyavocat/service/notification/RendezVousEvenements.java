@@ -36,17 +36,27 @@ public class RendezVousEvenements {
     }
 
     public void rendezVousConfirme(RendezVous rdv) {
+        String suffixeVisio = suffixeLienMeet(rdv);
         notifierClient(rdv, "RDV_CONFIRME", "Rendez-vous confirmé",
-                "Votre rendez-vous avec " + nomPraticien(rdv) + " est confirmé pour " + quand(rdv) + ".");
+                "Votre rendez-vous avec " + nomPraticien(rdv) + " est confirmé pour " + quand(rdv) + "." + suffixeVisio);
         notifierPraticien(rdv, "RDV_NOUVEAU", "Nouveau rendez-vous",
-                nomClient(rdv) + " a réservé un rendez-vous " + quand(rdv) + ".");
+                nomClient(rdv) + " a réservé un rendez-vous " + quand(rdv) + "." + suffixeVisio);
     }
 
     public void rendezVousModifie(RendezVous rdv) {
+        String suffixeVisio = suffixeLienMeet(rdv);
         notifierClient(rdv, "RDV_MODIFIE", "Rendez-vous modifié",
-                "Votre rendez-vous avec " + nomPraticien(rdv) + " est déplacé au " + quand(rdv) + ".");
+                "Votre rendez-vous avec " + nomPraticien(rdv) + " est déplacé au " + quand(rdv) + "." + suffixeVisio);
         notifierPraticien(rdv, "RDV_MODIFIE", "Rendez-vous déplacé",
-                nomClient(rdv) + " a déplacé son rendez-vous au " + quand(rdv) + ".");
+                nomClient(rdv) + " a déplacé son rendez-vous au " + quand(rdv) + "." + suffixeVisio);
+    }
+
+    private String suffixeLienMeet(RendezVous rdv) {
+        if (rdv != null && "VISIO".equalsIgnoreCase(rdv.getMode())
+                && rdv.getLienVisio() != null && !rdv.getLienVisio().isBlank()) {
+            return " Salle de visioconférence PsyAvocat (à rejoindre à l'heure prévue) : " + rdv.getLienVisio();
+        }
+        return "";
     }
 
     /** Prévient l'autre partie de l'annulation. */

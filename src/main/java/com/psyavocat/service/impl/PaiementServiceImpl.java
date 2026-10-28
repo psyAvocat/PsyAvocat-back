@@ -6,6 +6,7 @@ import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.exception.BadRequestException;
 import com.psyavocat.repository.PaiementRepository;
 import com.psyavocat.service.PaiementService;
+import com.psyavocat.service.support.Entites;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,9 +55,11 @@ public class PaiementServiceImpl implements PaiementService {
                     .montantTotalRendezVous(rdv.getMontantTotal())
                     .devise(rdv.getDevise() != null ? rdv.getDevise() : "XOF");
             if (rdv.getProfessionnel() != null) {
-                builder.professionnelNom(rdv.getProfessionnel().getNom())
-                        .professionnelPrenom(rdv.getProfessionnel().getPrenom())
-                        .typeProfessionnel(rdv.getProfessionnel() instanceof com.psyavocat.entity.Avocat ? "AVOCAT" : "PSYCHOLOGUE");
+                com.psyavocat.entity.Professionnel proReel = Entites.reel(rdv.getProfessionnel());
+                boolean estAvocat = (proReel instanceof com.psyavocat.entity.Avocat) || (rdv.getSoumission() != null);
+                builder.professionnelNom(proReel.getNom())
+                        .professionnelPrenom(proReel.getPrenom())
+                        .typeProfessionnel(estAvocat ? "AVOCAT" : "PSYCHOLOGUE");
             }
         }
         return builder.build();

@@ -28,8 +28,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import com.psyavocat.entity.RendezVous;
 import com.psyavocat.service.support.Entites;
 
 @Service
@@ -75,12 +81,134 @@ public class MessagerieServiceImpl implements MessagerieService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public List<ConversationResponseDTO> getMesConversations() {
         String uid = authenticationContext.getRequiredFirebaseUid();
+        synchroniserConversationsRendezVous(uid);
         return conversationRepository.findByParticipantId(uid).stream()
                 .map(c -> toConversationDto(c, uid))
                 .toList();
+    }
+
+    @Override
+    public void assurerConversationEntre(Utilisateur u1, Utilisateur u2) {
+        obtenirOuCreerConversationEntre(u1, u2);
+    }
+
+    @Override
+    public void envoyerMessageVisioRendezVous(RendezVous rdv, boolean estModification) {
+        if (rdv == null || rdv.getClient() == null || rdv.getProfessionnel() == null) {
+            return;
+        }
+        if (!"VISIO".equalsIgnoreCase(rdv.getMode()) || rdv.getLienVisio() == null || rdv.getLienVisio().isBlank()) {
+            return;
+        }
+
+        Utilisateur client = rdv.getClient();
+        Professionnel pro = rdv.getProfessionnel();
+        Conversation conv = obtenirOuCreerConversationEntre(client, pro);
+        if (conv == null) {
+            return;
+        }
+
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy 'à' HH'h'mm");
+        String dateHeureStr = rdv.getDateHeure() != null ? rdv.getDateHeure().format(fmt) : "l'horaire convenu";
+        int duree = rdv.getDureeMinutes() != null ? rdv.getDureeMinutes() : 45;
+
+        String contenu = estModification
+                ? "📅 Rendez-vous en visioconférence déplacé au " + dateHeureStr + " (" + duree + " min).\n"
+                  + "🔗 Salle de visioconférence PsyAvocat (à rejoindre à l'heure du rendez-vous) : " + rdv.getLienVisio()
+                : "📅 Rendez-vous en visioconférence confirmé pour le " + dateHeureStr + " (" + duree + " min).\n"
+                  + "🔗 Salle de visioconférence PsyAvocat (à rejoindre à l'heure du rendez-vous) : " + rdv.getLienVisio();
+
+        MessageContact msg = new MessageContact();
+        msg.setConversation(conv);
+        msg.setExpediteur(pro);
+        msg.setContenu(contenu);
+        msg.setDateEnvoi(LocalDateTime.now());
+        msg.setLu(false);
+        MessageContact savedMsg = messageContactRepository.save(msg);
+        conv.getMessages().add(savedMsg);
+
+        Map<String, Object> payload = Map.of(
+                "conversationId", conv.getId(),
+                "messageId", savedMsg.getId(),
+                "expediteurId", pro.getId()
+        );
+        realtimeGateway.envoyerA(client.getId(), "MESSAGE", payload);
+        realtimeGateway.envoyerA(pro.getId(), "MESSAGE", payload);
+    }
+
+    private Conversation obtenirOuCreerConversationEntre(Utilisateur u1, Utilisateur u2) {
+        if (u1 == null || u2 == null || u1.getId() == null || u2.getId() == null) {
+            return null;
+        }
+        if (u1.getId().equals(u2.getId())) {
+            return null;
+        }
+        List<Conversation> existantes = conversationRepository.findByParticipantId(u1.getId());
+        for (Conversation conv : existantes) {
+            if (conv.getParticipants() != null
+                    && conv.getParticipants().size() == 2
+                    && conv.getParticipants().stream().anyMatch(p -> u2.getId().equals(p.getId()))) {
+                return conv;
+            }
+        }
+        Conversation conv = new Conversation();
+        conv.setDateCreation(LocalDateTime.now());
+        conv.setStatut("OUVERTE");
+        conv.getParticipants().add(u1);
+        conv.getParticipants().add(u2);
+        return conversationRepository.save(conv);
+    }
+
+    /**
+     * Garantit que tout client ayant pris rendez-vous avec le professionnel connecté
+     * (ou tout professionnel avec lequel le client connecté a pris rendez-vous)
+     * figure bien dans la liste des conversations de messagerie.
+     */
+    private void synchroniserConversationsRendezVous(String uid) {
+        Utilisateur moi = utilisateurRepository.findById(uid).orElse(null);
+        if (moi == null) {
+            return;
+        }
+
+        List<Conversation> existantes = conversationRepository.findByParticipantId(uid);
+        Set<String> correspondantsExistants = existantes.stream()
+                .filter(c -> c.getParticipants() != null)
+                .flatMap(c -> c.getParticipants().stream())
+                .map(Utilisateur::getId)
+                .filter(id -> id != null && !id.equals(uid))
+                .collect(Collectors.toCollection(HashSet::new));
+
+        if (moi instanceof Professionnel) {
+            List<RendezVous> rdvsPro = rendezVousRepository.findByProfessionnelIdOrderByDateHeureDesc(uid);
+            for (RendezVous rdv : rdvsPro) {
+                Utilisateur client = rdv.getClient();
+                if (client != null && client.getId() != null && !correspondantsExistants.contains(client.getId())) {
+                    Conversation conv = new Conversation();
+                    conv.setDateCreation(rdv.getDateHeure() != null ? rdv.getDateHeure() : LocalDateTime.now());
+                    conv.setStatut("OUVERTE");
+                    conv.getParticipants().add(moi);
+                    conv.getParticipants().add(client);
+                    conversationRepository.save(conv);
+                    correspondantsExistants.add(client.getId());
+                }
+            }
+        } else {
+            List<RendezVous> rdvsClient = rendezVousRepository.findByClientIdOrderByDateHeureDesc(uid);
+            for (RendezVous rdv : rdvsClient) {
+                Professionnel pro = rdv.getProfessionnel();
+                if (pro != null && pro.getId() != null && !correspondantsExistants.contains(pro.getId())) {
+                    Conversation conv = new Conversation();
+                    conv.setDateCreation(rdv.getDateHeure() != null ? rdv.getDateHeure() : LocalDateTime.now());
+                    conv.setStatut("OUVERTE");
+                    conv.getParticipants().add(moi);
+                    conv.getParticipants().add(pro);
+                    conversationRepository.save(conv);
+                    correspondantsExistants.add(pro.getId());
+                }
+            }
+        }
     }
 
     @Override
