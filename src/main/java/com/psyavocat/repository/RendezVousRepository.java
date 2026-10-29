@@ -32,6 +32,10 @@ public interface RendezVousRepository extends JpaRepository<RendezVous, String> 
     List<RendezVous> findByStatutAndDateHeureGreaterThanEqualAndDateHeureLessThan(
             String statut, LocalDateTime debut, LocalDateTime fin);
 
+    /** Rendez-vous d'un mode donné encore sans lien de visioconférence (salles à créer). */
+    List<RendezVous> findByModeAndLienVisioIsNullAndStatutInAndDateHeureAfter(
+            String mode, java.util.Collection<String> statuts, LocalDateTime apres);
+
     /** Nombre de rendez-vous dont la date est dans [debut, fin[. */
     long countByDateHeureGreaterThanEqualAndDateHeureLessThan(LocalDateTime debut, LocalDateTime fin);
 

@@ -38,6 +38,9 @@ public abstract class Utilisateur {
     @Column(nullable = false)
     private Boolean actif = true;
 
+    /** Visite guidée de l'application mobile terminée ou passée : elle n'est plus proposée. */
+    private java.time.LocalDateTime visiteGuideeVueLe;
+
 
     @OneToMany(mappedBy = "client")
     private List<RendezVous> rendezVous = new ArrayList<>();

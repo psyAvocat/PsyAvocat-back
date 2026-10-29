@@ -8,6 +8,8 @@ import com.psyavocat.realtime.RealtimeGateway;
 import com.psyavocat.service.NotificationService;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Map;
@@ -24,8 +26,14 @@ public class RendezVousEvenements {
 
     public static final String RESSOURCE_RENDEZ_VOUS = "RENDEZ_VOUS";
 
+    /** Types des rappels planifiés (RendezVousReminderScheduler). */
+    public static final String RAPPEL_VEILLE = "RAPPEL_RDV_24H";
+    public static final String RAPPEL_JOUR = "RAPPEL_RDV_JOUR_J";
+    public static final String RAPPEL_VISIO = "RAPPEL_VISIO";
+
     private static final DateTimeFormatter FORMAT_DATE =
             DateTimeFormatter.ofPattern("EEEE d MMMM 'à' HH'h'mm", Locale.FRENCH);
+    private static final DateTimeFormatter FORMAT_HEURE = DateTimeFormatter.ofPattern("HH'h'mm");
 
     private final NotificationService notificationService;
     private final RealtimeGateway realtimeGateway;
@@ -39,7 +47,8 @@ public class RendezVousEvenements {
         notifierClient(rdv, "RDV_CONFIRME", "Rendez-vous confirmé",
                 "Votre rendez-vous avec " + nomPraticien(rdv) + " est confirmé pour " + quand(rdv) + ".");
         notifierPraticien(rdv, "RDV_NOUVEAU", "Nouveau rendez-vous",
-                nomClient(rdv) + " a réservé un rendez-vous " + quand(rdv) + ".");
+                nomClient(rdv) + (estVisio(rdv) ? " a réservé une visioconférence " : " a réservé un rendez-vous au cabinet ")
+                        + quand(rdv) + ".");
     }
 
     public void rendezVousModifie(RendezVous rdv) {
@@ -76,9 +85,38 @@ public class RendezVousEvenements {
                         + "L'acompte simulé est annulé.");
     }
 
-    public void rappel(RendezVous rdv, String type, String titre, String message) {
-        notifierClient(rdv, type, titre, message);
-        notifierPraticien(rdv, type, titre, message);
+    /**
+     * Rappel environ un jour avant : chaque partie reçoit le nom de l'autre, le jour, l'heure
+     * et la modalité (visioconférence ou cabinet).
+     */
+    public void rappelVeille(RendezVous rdv, LocalDateTime maintenant) {
+        String quand = quandRelatif(rdv, maintenant);
+        notifierClient(rdv, RAPPEL_VEILLE, "Rappel de rendez-vous",
+                consultation(rdv) + " avec " + nomPraticien(rdv) + " " + quand + ".");
+        notifierPraticien(rdv, RAPPEL_VEILLE, "Rappel de rendez-vous",
+                consultation(rdv) + " avec " + nomClient(rdv) + " " + quand + ".");
+    }
+
+    /** Rappel dans les deux heures qui précèdent le rendez-vous. */
+    public void rappelJour(RendezVous rdv, LocalDateTime maintenant) {
+        String titre = (estVisio(rdv) ? "Visioconférence à " : "Rendez-vous à ") + heure(rdv);
+        String quand = quandRelatif(rdv, maintenant);
+        notifierClient(rdv, RAPPEL_JOUR, titre, consultation(rdv) + " avec " + nomPraticien(rdv) + " " + quand + ".");
+        notifierPraticien(rdv, RAPPEL_JOUR, titre, consultation(rdv) + " avec " + nomClient(rdv) + " " + quand + ".");
+    }
+
+    /**
+     * Visioconférence imminente : chaque partie est invitée à rejoindre la salle (lien joint
+     * à la notification). Le professionnel sait avec quel client il a rendez-vous.
+     */
+    public void rappelVisio(RendezVous rdv, LocalDateTime maintenant) {
+        long minutes = Math.max(1, (long) Math.ceil(
+                java.time.Duration.between(maintenant, rdv.getDateHeure()).getSeconds() / 60.0));
+        String titre = "Visioconférence dans " + minutes + " min";
+        notifierClient(rdv, RAPPEL_VISIO, titre, "Votre visioconférence avec " + nomPraticien(rdv)
+                + " commence à " + heure(rdv) + ". Rejoignez la salle depuis votre rendez-vous.");
+        notifierPraticien(rdv, RAPPEL_VISIO, titre, "Votre visioconférence avec " + nomClient(rdv)
+                + " commence à " + heure(rdv) + ". Rejoignez la salle depuis vos rendez-vous.");
     }
 
     /** Diffuse le nouvel état d'un créneau (aucune donnée personnelle). */
@@ -117,6 +155,30 @@ public class RendezVousEvenements {
 
     private String quand(RendezVous rdv) {
         return rdv.getDateHeure() != null ? rdv.getDateHeure().format(FORMAT_DATE) : "";
+    }
+
+    /** « aujourd'hui à 10h30 », « demain à 10h30 » ou « le jeudi 30 octobre à 10h30 ». */
+    private String quandRelatif(RendezVous rdv, LocalDateTime maintenant) {
+        LocalDate jour = rdv.getDateHeure().toLocalDate();
+        if (jour.equals(maintenant.toLocalDate())) {
+            return "aujourd'hui à " + heure(rdv);
+        }
+        if (jour.equals(maintenant.toLocalDate().plusDays(1))) {
+            return "demain à " + heure(rdv);
+        }
+        return "le " + quand(rdv);
+    }
+
+    private String heure(RendezVous rdv) {
+        return rdv.getDateHeure().format(FORMAT_HEURE);
+    }
+
+    private static boolean estVisio(RendezVous rdv) {
+        return "VISIO".equalsIgnoreCase(rdv.getMode());
+    }
+
+    private static String consultation(RendezVous rdv) {
+        return estVisio(rdv) ? "Visioconférence" : "Rendez-vous au cabinet";
     }
 
     private String nomPraticien(RendezVous rdv) {

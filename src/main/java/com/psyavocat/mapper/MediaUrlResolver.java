@@ -11,8 +11,9 @@ import com.psyavocat.service.support.Entites;
 /**
  * Calcule l'URL d'affichage d'une photo de profil au moment de la lecture.
  *
- * Le bucket R2 {@code psyavocat-media} est privé : seule la clé d'objet est durable,
- * l'URL présignée est générée à chaque réponse pour ne jamais être expirée.
+ * Le bucket R2 {@code psyavocat-media} est privé : seule la clé d'objet est durable. L'URL
+ * présignée est fournie par le stockage, qui réutilise la même URL tant qu'elle reste
+ * largement valable (cache des navigateurs et de l'application).
  */
 @Component
 public class MediaUrlResolver {

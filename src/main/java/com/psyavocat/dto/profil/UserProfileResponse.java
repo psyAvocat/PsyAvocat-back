@@ -24,6 +24,8 @@ public class UserProfileResponse {
     private String telephone;
     private String typeUtilisateur; // PATIENT, JUSTICIABLE, AVOCAT, PSYCHOLOGUE, ADMINISTRATEUR
     private LocalDate dateInscription;
+    /** Visite guidée de l'application déjà vue (une seule fois par compte, tous appareils confondus). */
+    private Boolean visiteGuideeVue;
 
     // Champs spécifiques professionnels
     private String statutValidation; // PENDING, APPROVED, REJECTED, SUSPENDED

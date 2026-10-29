@@ -18,6 +18,9 @@ public interface ProfilService {
 
     UserProfileResponse updateProfile(UpdateProfileRequest request);
 
+    /** Visite guidée de l'application terminée ou passée : elle n'est plus proposée à ce compte. */
+    UserProfileResponse marquerVisiteGuideeVue();
+
     UserProfileResponse uploadPhotoProfil(org.springframework.web.multipart.MultipartFile file);
 
     UserProfileResponse supprimerPhotoProfil();

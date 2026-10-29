@@ -45,6 +45,12 @@ public class ProfilController {
         return ResponseEntity.ok(profilService.updateProfile(request));
     }
 
+    /** Visite guidée de l'application terminée ou passée (une seule fois par compte). */
+    @PostMapping("/visite-guidee")
+    public ResponseEntity<UserProfileResponse> marquerVisiteGuideeVue() {
+        return ResponseEntity.ok(profilService.marquerVisiteGuideeVue());
+    }
+
     @PostMapping(value = "/photo", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<UserProfileResponse> uploadPhotoProfil(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
         return ResponseEntity.ok(profilService.uploadPhotoProfil(file));

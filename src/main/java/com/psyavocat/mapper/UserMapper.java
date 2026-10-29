@@ -31,6 +31,7 @@ public class UserMapper {
                 .email(utilisateur.getEmail())
                 .telephone(utilisateur.getTelephone())
                 .dateInscription(utilisateur.getDateInscription())
+                .visiteGuideeVue(utilisateur.getVisiteGuideeVueLe() != null)
                 .photoUrl(mediaUrlResolver.photoUrlOf(utilisateur));
 
         if (utilisateur instanceof Client) {

@@ -65,6 +65,18 @@ public class ProfilServiceImpl implements ProfilService {
     }
 
     @Override
+    public UserProfileResponse marquerVisiteGuideeVue() {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Utilisateur utilisateur = utilisateurRepository.findById(uid)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
+        if (utilisateur.getVisiteGuideeVueLe() == null) {
+            utilisateur.setVisiteGuideeVueLe(java.time.LocalDateTime.now());
+            utilisateur = utilisateurRepository.save(utilisateur);
+        }
+        return userMapper.toProfileResponse(utilisateur);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public UserProfileResponse getCurrentProfile() {
         String uid = authenticationContext.getRequiredFirebaseUid();

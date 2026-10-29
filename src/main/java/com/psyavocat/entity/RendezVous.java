@@ -22,7 +22,7 @@ public class RendezVous {
 
     private String statut; // CONFIRME, EN_ATTENTE, PASSE, ANNULE
 
-    private String mode; // EN_LIGNE (Visio), EN_CABINET
+    private String mode; // VISIO ou CABINET
 
     private String motif;
 
@@ -35,7 +35,13 @@ public class RendezVous {
     @Column(length = 10)
     private String devise = "XOF";
 
+    /** Salle de visioconférence propre au rendez-vous (mode VISIO). */
     private String lienVisio;
+
+    /** Rappels déjà envoyés : chacun part une seule fois, même après un redémarrage du serveur. */
+    private Boolean rappelVeilleEnvoye;
+    private Boolean rappelJourEnvoye;
+    private Boolean rappelVisioEnvoye;
 
     private String adresseCabinet;
 
@@ -58,6 +64,13 @@ public class RendezVous {
 
     @OneToOne(mappedBy = "rendezVous", cascade = CascadeType.ALL)
     private Paiement paiement;
+
+    /** Rendez-vous déplacé : ses rappels repartent pour la nouvelle date. */
+    public void reinitialiserRappels() {
+        this.rappelVeilleEnvoye = null;
+        this.rappelJourEnvoye = null;
+        this.rappelVisioEnvoye = null;
+    }
 
     // Rétrocompatibilité avec l'ancien nom de champ
     public Utilisateur getPatient() {

@@ -22,10 +22,14 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.io.IOException;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Service de stockage Cloudflare R2 pour les médias visuels (photos de profil, avatars).
@@ -47,6 +51,15 @@ public class R2MediaStorageService implements ImageStorageService {
 
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
+
+    /** Horloge des URL d'affichage (remplaçable dans les tests). */
+    Clock horloge = Clock.systemUTC();
+
+    /** URL d'affichage déjà signée, par clé d'objet, et fin de sa validité. */
+    private record UrlSignee(String url, Instant expiration) {
+    }
+
+    private final Map<String, UrlSignee> urlsSignees = new ConcurrentHashMap<>();
 
     @Value("${r2.media-bucket:${R2_MEDIA_BUCKET:psyavocat-media}}")
     private String mediaBucket;
@@ -133,26 +146,64 @@ public class R2MediaStorageService implements ImageStorageService {
                     .build();
 
             s3Client.deleteObject(deleteRequest);
+            urlsSignees.remove(publicId);
             log.info("Image supprimée de Cloudflare R2 (bucket={}) : cle={}", mediaBucket, publicId);
         } catch (Exception ex) {
             log.warn("Impossible de supprimer l'image dans R2 (cle={}): {}", publicId, ex.getMessage());
         }
     }
 
-    /** Durée de validité des URL d'affichage générées à la lecture. */
-    private static final Duration DUREE_URL_AFFICHAGE = Duration.ofHours(1);
+    /** Durée de validité des URL d'affichage. */
+    static final Duration VALIDITE_URL_AFFICHAGE = Duration.ofHours(24);
 
+    /**
+     * Une URL déjà signée est réutilisée tant qu'il lui reste au moins ce délai : l'application
+     * a largement le temps de l'afficher, et le navigateur la retrouve dans son cache.
+     */
+    static final Duration MARGE_REUTILISATION = Duration.ofHours(4);
+
+    /** Au-delà de ce nombre d'URL mémorisées, les URL expirées sont oubliées. */
+    private static final int SEUIL_PURGE = 5_000;
+
+    /**
+     * En-tête de cache renvoyé par Cloudflare avec l'image : une clé d'objet ne désigne jamais
+     * qu'une seule image (nom unique à chaque envoi), elle peut donc rester en cache. Imposé par
+     * l'URL, il vaut aussi pour les images envoyées avant l'ajout de cet en-tête au stockage.
+     */
+    private static final String CACHE_IMAGE = "private, max-age=31536000, immutable";
+
+    /**
+     * URL d'affichage d'une image du bucket privé.
+     *
+     * La même URL est rendue pour une même image pendant environ 20 heures (au lieu d'une URL
+     * différente à chaque réponse de l'API) : les navigateurs et l'application gardent l'image
+     * en cache au lieu de la retélécharger depuis Cloudflare à chaque écran.
+     */
     @Override
     public String getAccessUrl(String objectKey) {
         if (s3Presigner == null || objectKey == null || objectKey.isBlank()) {
             return null;
         }
+        Instant maintenant = horloge.instant();
+        UrlSignee connue = urlsSignees.get(objectKey);
+        if (connue != null && connue.expiration().isAfter(maintenant.plus(MARGE_REUTILISATION))) {
+            return connue.url();
+        }
         try {
             GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-                    .signatureDuration(DUREE_URL_AFFICHAGE)
-                    .getObjectRequest(GetObjectRequest.builder().bucket(mediaBucket).key(objectKey).build())
+                    .signatureDuration(VALIDITE_URL_AFFICHAGE)
+                    .getObjectRequest(GetObjectRequest.builder()
+                            .bucket(mediaBucket)
+                            .key(objectKey)
+                            .responseCacheControl(CACHE_IMAGE)
+                            .build())
                     .build();
-            return s3Presigner.presignGetObject(presignRequest).url().toString();
+            String url = s3Presigner.presignGetObject(presignRequest).url().toString();
+            if (urlsSignees.size() >= SEUIL_PURGE) {
+                urlsSignees.values().removeIf(u -> !u.expiration().isAfter(maintenant));
+            }
+            urlsSignees.put(objectKey, new UrlSignee(url, maintenant.plus(VALIDITE_URL_AFFICHAGE)));
+            return url;
         } catch (Exception e) {
             log.warn("Impossible de générer l'URL d'accès de l'image {} : {}", objectKey, e.getMessage());
             return null;

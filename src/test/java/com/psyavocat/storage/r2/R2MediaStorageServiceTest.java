@@ -103,4 +103,74 @@ class R2MediaStorageServiceTest {
         ApiException ex = assertThrows(ApiException.class, () -> unconfigured.uploadImage(file, "avatars", "pro1"));
         assertEquals(503, ex.getStatus().value());
     }
+
+    // --- URL d'affichage : réutilisées pour que les images restent en cache ---
+
+    private final java.util.concurrent.atomic.AtomicInteger signatures = new java.util.concurrent.atomic.AtomicInteger();
+
+    private void signer() throws MalformedURLException {
+        when(s3Presigner.presignGetObject(any(GetObjectPresignRequest.class))).thenAnswer(i -> {
+            PresignedGetObjectRequest presigned = mock(PresignedGetObjectRequest.class);
+            when(presigned.url()).thenReturn(new URL(
+                    "https://account.r2.cloudflarestorage.com/psyavocat-media/avatars/a.jpg?sig=" + signatures.incrementAndGet()));
+            return presigned;
+        });
+    }
+
+    private void avancer(java.time.Duration duree) {
+        r2MediaService.horloge = java.time.Clock.offset(r2MediaService.horloge, duree);
+    }
+
+    @Test
+    @DisplayName("Même image : même URL d'une réponse à l'autre (cache navigateur et application)")
+    void urlReutilisee() throws MalformedURLException {
+        signer();
+
+        String premiere = r2MediaService.getAccessUrl("avatars/a.jpg");
+        avancer(java.time.Duration.ofHours(19));
+        String plusTard = r2MediaService.getAccessUrl("avatars/a.jpg");
+
+        assertEquals(premiere, plusTard);
+        assertEquals(1, signatures.get());
+    }
+
+    @Test
+    @DisplayName("URL bientôt expirée : une nouvelle est signée à temps")
+    void urlRenouveleeAvantExpiration() throws MalformedURLException {
+        signer();
+
+        String premiere = r2MediaService.getAccessUrl("avatars/a.jpg");
+        avancer(java.time.Duration.ofHours(21));
+        String nouvelle = r2MediaService.getAccessUrl("avatars/a.jpg");
+
+        assertNotEquals(premiere, nouvelle);
+        assertEquals(2, signatures.get());
+    }
+
+    @Test
+    @DisplayName("URL signée : valable 24 h et accompagnée d'un en-tête de cache longue durée")
+    void urlAvecCacheLongueDuree() throws MalformedURLException {
+        signer();
+        org.mockito.ArgumentCaptor<GetObjectPresignRequest> requete =
+                org.mockito.ArgumentCaptor.forClass(GetObjectPresignRequest.class);
+
+        r2MediaService.getAccessUrl("avatars/a.jpg");
+
+        verify(s3Presigner).presignGetObject(requete.capture());
+        assertEquals(java.time.Duration.ofHours(24), requete.getValue().signatureDuration());
+        assertEquals("private, max-age=31536000, immutable",
+                requete.getValue().getObjectRequest().responseCacheControl());
+    }
+
+    @Test
+    @DisplayName("Image supprimée : son URL n'est plus réutilisée")
+    void imageSupprimee_urlOubliee() throws MalformedURLException {
+        signer();
+
+        r2MediaService.getAccessUrl("avatars/a.jpg");
+        r2MediaService.deleteImage("avatars/a.jpg");
+        r2MediaService.getAccessUrl("avatars/a.jpg");
+
+        assertEquals(2, signatures.get());
+    }
 }

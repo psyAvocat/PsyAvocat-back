@@ -101,7 +101,8 @@ class RendezVousServiceTest {
                 utilisateurRepository,
                 authenticationContext,
                 evenements,
-                mediaUrlResolver
+                mediaUrlResolver,
+                new com.psyavocat.service.support.SallesVisio("https://visio.test/")
         );
 
         patient = new Patient();
@@ -173,6 +174,8 @@ class RendezVousServiceTest {
         assertThat(disponibilite.getStatut()).isEqualTo("RESERVE");
         assertThat(response.getMontantAcompte()).isEqualByComparingTo(montantAcompte);
         assertThat(response.getStatutPaiement()).isEqualTo("PAYE");
+        // Visio : une salle propre au rendez-vous, au nom imprévisible.
+        assertThat(response.getLienVisio()).matches("https://visio\\.test/PsyAvocat-[0-9a-f]{32}");
 
         verify(disponibiliteRepository).save(disponibilite);
         verify(paiementService).traiterAcompteRendezVous(eq(patient), any(RendezVous.class), eq(montantAcompte));

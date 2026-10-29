@@ -17,6 +17,7 @@ import com.psyavocat.service.RendezVousService;
 import com.psyavocat.service.notification.RendezVousEvenements;
 import com.psyavocat.service.support.AccesProfessionnel;
 import com.psyavocat.service.support.ClientAccounts;
+import com.psyavocat.service.support.SallesVisio;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +49,7 @@ public class RendezVousServiceImpl implements RendezVousService {
     private final AuthenticationContext authenticationContext;
     private final RendezVousEvenements evenements;
     private final MediaUrlResolver mediaUrlResolver;
+    private final SallesVisio sallesVisio;
 
     public RendezVousServiceImpl(
             RendezVousRepository rendezVousRepository,
@@ -60,7 +62,8 @@ public class RendezVousServiceImpl implements RendezVousService {
             UtilisateurRepository utilisateurRepository,
             AuthenticationContext authenticationContext,
             RendezVousEvenements evenements,
-            MediaUrlResolver mediaUrlResolver
+            MediaUrlResolver mediaUrlResolver,
+            SallesVisio sallesVisio
     ) {
         this.rendezVousRepository = rendezVousRepository;
         this.disponibiliteRepository = disponibiliteRepository;
@@ -73,6 +76,7 @@ public class RendezVousServiceImpl implements RendezVousService {
         this.authenticationContext = authenticationContext;
         this.evenements = evenements;
         this.mediaUrlResolver = mediaUrlResolver;
+        this.sallesVisio = sallesVisio;
     }
 
     // ------------------------------------------------------------------
@@ -173,6 +177,8 @@ public class RendezVousServiceImpl implements RendezVousService {
         rdv.setMontantTotal(montantTotal);
         rdv.setMontantAcompte(montantAcompte);
         rdv.setAdresseCabinet("CABINET".equals(mode) ? pro.getAdresse() : null);
+        // Visio : une salle propre au rendez-vous, dont le lien n'est remis qu'au client et au professionnel.
+        rdv.setLienVisio("VISIO".equals(mode) ? sallesVisio.nouvelleSalle() : null);
         rdv.setPatient(client);
         rdv.setProfessionnel(pro);
         rdv.setDisponibilite(disp);
@@ -256,6 +262,7 @@ public class RendezVousServiceImpl implements RendezVousService {
         rdv.setDisponibilite(nouveau);
         rdv.setDateHeure(debutDe(nouveau));
         rdv.setDureeMinutes(dureeDe(nouveau));
+        rdv.reinitialiserRappels();
         RendezVous saved = rendezVousRepository.save(rdv);
 
         evenements.rendezVousModifie(saved);
