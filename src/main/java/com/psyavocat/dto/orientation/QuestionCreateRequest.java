@@ -1,12 +1,10 @@
 package com.psyavocat.dto.orientation;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 
 /**
  * Requête de création/modification d'une question depuis l'espace Admin.

@@ -24,6 +24,12 @@ public class MessagerieController {
         return ResponseEntity.ok(messagerieService.getMesConversations());
     }
 
+    /** Discussion existante avec ce destinataire, ou brouillon (sans identifiant) : rien n'est créé. */
+    @GetMapping("/avec/{destinataireId}")
+    public ResponseEntity<ConversationResponseDTO> ouvrirAvec(@PathVariable String destinataireId) {
+        return ResponseEntity.ok(messagerieService.ouvrirAvec(destinataireId));
+    }
+
     @PostMapping
     public ResponseEntity<ConversationResponseDTO> createConversation(
             @Valid @RequestBody CreateConversationRequest request
@@ -42,6 +48,20 @@ public class MessagerieController {
             @Valid @RequestBody SendMessageRequest request
     ) {
         return ResponseEntity.status(HttpStatus.CREATED).body(messagerieService.sendMessage(id, request));
+    }
+
+    /** L'expéditeur supprime l'un de ses messages (pour tous les participants). */
+    @DeleteMapping("/{id}/messages/{messageId}")
+    public ResponseEntity<Void> supprimerMessage(@PathVariable String id, @PathVariable String messageId) {
+        messagerieService.supprimerMessage(id, messageId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Supprime la discussion de sa messagerie ; l'autre participant la conserve. */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> supprimerConversation(@PathVariable String id) {
+        messagerieService.supprimerConversation(id);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/unread-count")

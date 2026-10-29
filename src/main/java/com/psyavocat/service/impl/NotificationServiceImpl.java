@@ -125,6 +125,23 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
+    public void supprimerNonLuesPourRessource(String destinataireId, String ressourceType, String ressourceId) {
+        List<Notification> nonLues = notificationRepository
+                .findByDestinataireIdAndRessourceTypeAndRessourceIdAndLuFalse(destinataireId, ressourceType, ressourceId);
+        if (!nonLues.isEmpty()) {
+            notificationRepository.deleteAll(nonLues);
+        }
+    }
+
+    @Override
+    public void supprimerPourRessource(String ressourceType, String ressourceId) {
+        List<Notification> liees = notificationRepository.findByRessourceTypeAndRessourceId(ressourceType, ressourceId);
+        if (!liees.isEmpty()) {
+            notificationRepository.deleteAll(liees);
+        }
+    }
+
+    @Override
     public void marquerLuesPourRessource(String destinataireId, String ressourceType, String ressourceId) {
         List<Notification> nonLues = notificationRepository
                 .findByDestinataireIdAndRessourceTypeAndRessourceIdAndLuFalse(destinataireId, ressourceType, ressourceId);

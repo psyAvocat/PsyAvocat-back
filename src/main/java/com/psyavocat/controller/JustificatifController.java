@@ -29,9 +29,10 @@ public class JustificatifController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<JustificatifResponseDTO> uploadJustificatif(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("typeDocument") String typeDocument
+            @RequestParam("typeDocument") String typeDocument,
+            @RequestParam(value = "remplaceId", required = false) String remplaceId
     ) {
-        return ResponseEntity.ok(justificatifService.uploadJustificatif(file, typeDocument));
+        return ResponseEntity.ok(justificatifService.uploadJustificatif(file, typeDocument, remplaceId));
     }
 
     @GetMapping("/me")

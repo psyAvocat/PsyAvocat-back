@@ -23,5 +23,6 @@ public class FichePatientResponseDTO {
     private String patientPrenom;
     private String patientEmail;
     private String patientTelephone;
+    private String patientPhotoUrl;
     private List<SeanceResponseDTO> seances;
 }

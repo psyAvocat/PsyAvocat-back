@@ -20,4 +20,6 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
 
     List<Notification> findByDestinataireIdAndRessourceTypeAndRessourceIdAndLuFalse(
             String destinataireId, String ressourceType, String ressourceId);
+
+    List<Notification> findByRessourceTypeAndRessourceId(String ressourceType, String ressourceId);
 }

@@ -48,6 +48,6 @@ public class Contenu {
     /** Image d'illustration (bucket R2 psyavocat-media). */
     private String imageObjectKey;
 
-    /** Nombre de consultations du détail par des clients (sert au tri « Populaires »). */
+    /** Nombre de clients distincts ayant lu la publication (tri « Populaires ») ; voir LectureContenu. */
     private Long nombreVues = 0L;
 }

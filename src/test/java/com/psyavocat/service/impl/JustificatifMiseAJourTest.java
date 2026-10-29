@@ -9,7 +9,9 @@ import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.NotificationService;
 import com.psyavocat.service.support.AccesProfessionnel;
 import com.psyavocat.service.support.JournalDecisions;
+import com.psyavocat.storage.model.StoredDocument;
 import com.psyavocat.storage.service.DocumentStorageService;
+import org.springframework.mock.web.MockMultipartFile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -156,5 +158,87 @@ class JustificatifMiseAJourTest {
         // Aucun motif pour un document en attente ou validé.
         assertThat(liste.stream().filter(d -> !d.getId().equals("cv-refuse")))
                 .allSatisfy(d -> assertThat(d.getMotifRejet()).isNull());
+    }
+
+    // --- Justificatifs complémentaires : mise à jour d'un document précis ---
+
+    private JustificatifProfessionnel complementaire(String id, String statut, String fichier) {
+        JustificatifProfessionnel j = document(id, statut, fichier);
+        j.setTypeDocument("JUSTIFICATIF_PROFESSIONNEL");
+        when(repository.findById(id)).thenReturn(Optional.of(j));
+        return j;
+    }
+
+    private void avocatConnecte() {
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("avocat-1");
+        when(utilisateurRepository.findById("avocat-1")).thenReturn(Optional.of(avocat));
+        when(storage.uploadDocument(any(), any())).thenAnswer(i ->
+                StoredDocument.builder().cleObjet(i.getArgument(1)).build());
+    }
+
+    private MockMultipartFile fichier(String nom) {
+        return new MockMultipartFile("file", nom, "application/pdf", new byte[] {1, 2, 3});
+    }
+
+    @Test
+    @DisplayName("Complémentaire validé mis à jour : la nouvelle version vise l'actuelle, qui reste en vigueur")
+    void complementaireValide_nouvelleVersionEnAttente() {
+        avocatConnecte();
+        JustificatifProfessionnel agrement = complementaire("agrement", "VALIDE", "agrement-2025.pdf");
+        JustificatifProfessionnel ancienRefus = complementaire("refus", "REJETE", "agrement-flou.pdf");
+        ancienRefus.setRemplaceId("agrement");
+        when(repository.findByRemplaceId("agrement")).thenReturn(List.of(ancienRefus));
+
+        var dto = service.uploadJustificatif(fichier("agrement-2026.pdf"), "IGNORE", "agrement");
+
+        assertThat(dto.getRemplaceId()).isEqualTo("agrement");
+        assertThat(dto.getTypeDocument()).isEqualTo("JUSTIFICATIF_PROFESSIONNEL");
+        assertThat(dto.getStatutValidation()).isEqualTo("EN_ATTENTE");
+        verify(repository).delete(ancienRefus);
+        verify(repository, never()).delete(agrement);
+        verify(notificationService, never()).sendNotification(eq("avocat-1"), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Complémentaire refusé redéposé : le nouveau fichier le remplace aussitôt")
+    void complementaireRefuse_remplaceAussitot() {
+        avocatConnecte();
+        JustificatifProfessionnel refuse = complementaire("attestation", "REJETE", "attestation-floue.pdf");
+
+        var dto = service.uploadJustificatif(fichier("attestation.pdf"), "JUSTIFICATIF_PROFESSIONNEL", "attestation");
+
+        assertThat(dto.getRemplaceId()).isNull();
+        verify(repository).delete(refuse);
+        verify(storage).deleteDocument(refuse.getCleObjet());
+    }
+
+    @Test
+    @DisplayName("Mise à jour d'un complémentaire validée : elle remplace celui qu'elle vise, et lui seul")
+    void miseAJourComplementaireValidee_remplaceLaCible() {
+        JustificatifProfessionnel agrement = complementaire("agrement", "VALIDE", "agrement-2025.pdf");
+        JustificatifProfessionnel nouvelle = complementaire("agrement-2026", "EN_ATTENTE", "agrement-2026.pdf");
+        nouvelle.setRemplaceId("agrement");
+        when(repository.findByRemplaceId("agrement")).thenReturn(List.of(nouvelle));
+
+        service.decider("agrement-2026", "VALIDE", null);
+
+        assertThat(nouvelle.getStatutValidation()).isEqualTo("VALIDE");
+        assertThat(nouvelle.getRemplaceId()).isNull();
+        verify(repository).delete(agrement);
+        verify(repository, never()).delete(nouvelle);
+        verify(notificationService).sendNotification(eq("avocat-1"), eq("JUSTIFICATIF_VALIDE"),
+                contains("remplace la précédente"), isNull());
+    }
+
+    @Test
+    @DisplayName("Un document obligatoire ne se met pas à jour comme un complémentaire")
+    void documentObligatoire_parRemplaceId_refuse() {
+        avocatConnecte();
+        when(repository.findById("cv-actuel")).thenReturn(Optional.of(cvActuel));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> service.uploadJustificatif(fichier("cv.pdf"), "CV", "cv-actuel"))
+                .isInstanceOf(com.psyavocat.exception.BadRequestException.class);
+        verify(repository, never()).save(any());
     }
 }

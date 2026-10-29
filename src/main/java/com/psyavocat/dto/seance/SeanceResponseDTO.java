@@ -26,6 +26,7 @@ public class SeanceResponseDTO {
     private String patientPrenom;
     private String patientEmail;
     private String patientTelephone;
+    private String patientPhotoUrl;
     private String rendezVousId;
     private List<NoteSeanceDTO> notes;
 }

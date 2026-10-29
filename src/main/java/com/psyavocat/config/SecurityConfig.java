@@ -72,24 +72,13 @@ public class SecurityConfig {
                         .requestMatchers("/health").permitAll()
                         // WebSocket : authentifié par RealtimeHandshakeInterceptor (jeton Firebase vérifié)
                         .requestMatchers("/ws").permitAll()
-                        // Consultation publique du catalogue et orientation onboarding
-                        .requestMatchers(HttpMethod.GET, "/api/orientation/questionnaires/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/questionnaires/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/orientation/evaluer").permitAll()
-                        // Espace personnel du professionnel : jamais public (avant la règle du catalogue)
-                        .requestMatchers(HttpMethod.GET,
-                                "/api/professionnels/clients", "/api/professionnels/stats",
-                                "/api/professionnel/clients", "/api/professionnel/stats").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/professionnels/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/disponibilites/professionnel/**").permitAll()
+                        // Référentiels : nécessaires au formulaire d'inscription (avant toute connexion).
+                        // Professionnels, créneaux, publications et orientation sont réservés aux
+                        // comptes connectés (l'application mobile n'a pas de mode invité).
                         .requestMatchers(HttpMethod.GET, "/api/referentiels", "/api/referentiels/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/specialites", "/api/specialites/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/domaines", "/api/domaines/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categories-besoin", "/api/categories-besoin/**").permitAll()
-                        // Articles et conseils publiés : lisibles en mode invité (mobile).
-                        // /mes-contenus reste réservé à l'auteur connecté (avant la règle publique).
-                        .requestMatchers(HttpMethod.GET, "/api/contenus/mes-contenus").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/contenus", "/api/contenus/*").permitAll()
                         // Tout autre endpoint nécessite une authentification Firebase valide
                         .anyRequest().authenticated()
                 )

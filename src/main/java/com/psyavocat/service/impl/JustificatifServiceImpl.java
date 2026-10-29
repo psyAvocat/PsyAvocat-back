@@ -79,13 +79,26 @@ public class JustificatifServiceImpl implements JustificatifService {
     }
 
     @Override
-    public JustificatifResponseDTO uploadJustificatif(MultipartFile file, String typeDocument) {
+    public JustificatifResponseDTO uploadJustificatif(MultipartFile file, String typeDocument, String remplaceId) {
         // Dépôt ouvert aux comptes en attente de vérification et approuvés uniquement.
         Professionnel professionnel = accesProfessionnel.exigerParcoursVerificationOuvert();
 
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Fichier manquant ou vide.");
         }
+
+        // Mise à jour d'un justificatif complémentaire précis (plusieurs partagent le même type).
+        JustificatifProfessionnel cible = null;
+        if (remplaceId != null && !remplaceId.isBlank()) {
+            cible = justificatifRepository.findById(remplaceId)
+                    .filter(j -> j.getProfessionnel().getId().equals(professionnel.getId()))
+                    .orElseThrow(() -> new ResourceNotFoundException("Justificatif à mettre à jour introuvable."));
+            if (estDocumentUnique(cible.getTypeDocument())) {
+                throw new BadRequestException("Ce document se met à jour depuis son emplacement dans votre profil.");
+            }
+            typeDocument = cible.getTypeDocument();
+        }
+        boolean cibleValidee = cible != null && "VALIDE".equalsIgnoreCase(cible.getStatutValidation());
 
         String originalFileName = StringUtils.cleanPath(file.getOriginalFilename() != null ? file.getOriginalFilename() : "document");
         if (originalFileName.contains("..")) {
@@ -129,22 +142,34 @@ public class JustificatifServiceImpl implements JustificatifService {
 
         // Mise à jour d'un document déjà validé : le document actuel reste valable jusqu'à la
         // décision ; une mise à jour encore en attente pour ce même type est remplacée.
-        boolean miseAJour = estDocumentUnique(typeDocument)
+        boolean miseAJour = cibleValidee || (estDocumentUnique(typeDocument)
                 && !justificatifRepository.findByProfessionnelIdAndTypeDocumentAndStatutValidation(
-                        professionnel.getId(), typeDocument, "VALIDE").isEmpty();
-        if (miseAJour) {
+                        professionnel.getId(), typeDocument, "VALIDE").isEmpty());
+        if (miseAJour && cible == null) {
             for (JustificatifProfessionnel ancien : justificatifRepository.findByProfessionnelIdAndTypeDocumentAndStatutValidation(
                     professionnel.getId(), typeDocument, "EN_ATTENTE")) {
                 supprimerFichierEtLigne(ancien);
             }
         }
+        if (cibleValidee) {
+            // Une seule nouvelle version à la fois : les précédentes (en attente ou refusées) sont retirées.
+            justif.setRemplaceId(cible.getId());
+            justificatifRepository.findByRemplaceId(cible.getId()).forEach(this::supprimerFichierEtLigne);
+        } else if (cible != null) {
+            // Dépôt pas encore validé (en examen ou refusé) : le nouveau fichier le remplace aussitôt.
+            justif.setRemplaceId(cible.getRemplaceId());
+        }
 
         JustificatifProfessionnel saved = justificatifRepository.save(justif);
+        if (cible != null && !cibleValidee) {
+            supprimerFichierEtLigne(cible);
+        }
         // Compte déjà validé : l'administration vérifie tout nouveau dépôt.
         if ("APPROVED".equalsIgnoreCase(professionnel.getStatutValidation())) {
             String nom = (professionnel.getPrenom() + " " + professionnel.getNom()).trim();
+            String document = cibleValidee ? cible.getNomFichier() : libelleType(typeDocument);
             String message = miseAJour
-                    ? nom + " a déposé une nouvelle version de son document « " + libelleType(typeDocument)
+                    ? nom + " a déposé une nouvelle version de son document « " + document
                             + " ». Vérifiez-la depuis Validation des comptes."
                     : nom + " a déposé un nouveau document (« " + libelleType(typeDocument)
                             + " »). Vérifiez-le depuis Validation des comptes.";
@@ -170,6 +195,12 @@ public class JustificatifServiceImpl implements JustificatifService {
                     dto.setProfessionnelNom((p.getPrenom() + " " + p.getNom()).trim());
                     dto.setTypeProfessionnel(com.psyavocat.service.support.TypesProfessionnel.typeDe(p));
                     if (!estDocumentUnique(j.getTypeDocument())) {
+                        if (j.getRemplaceId() != null) {
+                            justificatifRepository.findById(j.getRemplaceId()).ifPresent(actuel -> {
+                                dto.setRemplaceId(actuel.getId());
+                                dto.setRemplaceNomFichier(actuel.getNomFichier());
+                            });
+                        }
                         return dto;
                     }
                     justificatifRepository.findByProfessionnelIdAndTypeDocumentAndStatutValidation(
@@ -334,18 +365,23 @@ public class JustificatifServiceImpl implements JustificatifService {
         }
         JustificatifProfessionnel justif = justificatifRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Justificatif introuvable"));
-        List<JustificatifProfessionnel> versionsValidees = !estDocumentUnique(justif.getTypeDocument())
-                ? List.of()
-                : justificatifRepository.findByProfessionnelIdAndTypeDocumentAndStatutValidation(
-                        justif.getProfessionnel().getId(), justif.getTypeDocument(), "VALIDE").stream()
-                .filter(v -> !v.getId().equals(justif.getId()))
-                .toList();
+        List<JustificatifProfessionnel> versionsValidees = versionsRemplacees(justif);
         boolean remplacement = "VALIDE".equals(decision) && !versionsValidees.isEmpty();
         justif.setStatutValidation(decision);
+        if ("VALIDE".equals(decision)) {
+            // Elle fait désormais foi : ce n'est plus une mise à jour en attente.
+            justif.setRemplaceId(null);
+        }
         JustificatifProfessionnel saved = justificatifRepository.save(justif);
         if (remplacement) {
-            // La nouvelle version fait foi : l'ancienne est retirée (fichier et ligne).
-            versionsValidees.forEach(this::supprimerFichierEtLigne);
+            // La nouvelle version fait foi : l'ancienne est retirée (fichier et ligne), ainsi que
+            // les versions refusées qui la visaient.
+            for (JustificatifProfessionnel ancienne : versionsValidees) {
+                justificatifRepository.findByRemplaceId(ancienne.getId()).stream()
+                        .filter(v -> !v.getId().equals(saved.getId()))
+                        .forEach(this::supprimerFichierEtLigne);
+                supprimerFichierEtLigne(ancienne);
+            }
         }
         journalDecisions.enregistrer(com.psyavocat.service.support.JournalDecisions.TYPE_JUSTIFICATIF,
                 saved.getId(), decision, motifNettoye);
@@ -362,6 +398,24 @@ public class JustificatifServiceImpl implements JustificatifService {
                                         : ". Votre version actuelle reste en vigueur ; vous pouvez en déposer une autre depuis votre profil."),
                 null);
         return mapToDto(saved);
+    }
+
+    /**
+     * Versions validées qu'un document remplacera s'il est approuvé : même type pour un document
+     * obligatoire, justificatif visé pour une mise à jour de justificatif complémentaire.
+     */
+    private List<JustificatifProfessionnel> versionsRemplacees(JustificatifProfessionnel justif) {
+        if (!estDocumentUnique(justif.getTypeDocument())) {
+            return justif.getRemplaceId() == null ? List.of()
+                    : justificatifRepository.findById(justif.getRemplaceId())
+                            .filter(v -> "VALIDE".equalsIgnoreCase(v.getStatutValidation()))
+                            .map(List::of)
+                            .orElse(List.of());
+        }
+        return justificatifRepository.findByProfessionnelIdAndTypeDocumentAndStatutValidation(
+                        justif.getProfessionnel().getId(), justif.getTypeDocument(), "VALIDE").stream()
+                .filter(v -> !v.getId().equals(justif.getId()))
+                .toList();
     }
 
     private boolean estAdministrateur() {
@@ -403,6 +457,7 @@ public class JustificatifServiceImpl implements JustificatifService {
                 .professionnelId(justif.getProfessionnel().getId())
                 .tailleOctets(justif.getTailleOctets())
                 .typeMime(justif.getTypeMime())
+                .remplaceId(justif.getRemplaceId())
                 .urlVisualisation(presignedUrl)
                 .build();
     }

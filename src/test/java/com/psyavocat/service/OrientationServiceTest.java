@@ -110,7 +110,7 @@ class OrientationServiceTest {
 
         com.psyavocat.entity.Patient testUser = new com.psyavocat.entity.Patient();
         testUser.setId("user-test");
-        lenient().when(authenticationContext.getFirebaseUid()).thenReturn(Optional.of("user-test"));
+        lenient().when(authenticationContext.getRequiredFirebaseUid()).thenReturn("user-test");
         lenient().when(utilisateurRepository.findById("user-test")).thenReturn(Optional.of(testUser));
 
         question1 = new Question();

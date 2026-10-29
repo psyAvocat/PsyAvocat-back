@@ -47,3 +47,7 @@ credentials/
 .env
 .env.*
 !.env.example
+
+### Fichiers déposés par les utilisateurs (justificatifs, pièces jointes, photos) ###
+# Données personnelles sensibles : jamais versionnées.
+uploads/

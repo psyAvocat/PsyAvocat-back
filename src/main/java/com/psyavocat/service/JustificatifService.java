@@ -7,7 +7,11 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 public interface JustificatifService {
-    JustificatifResponseDTO uploadJustificatif(MultipartFile file, String typeDocument);
+    /**
+     * @param remplaceId justificatif complémentaire à mettre à jour (null : nouveau dépôt) ; une version
+     *                   validée reste en vigueur jusqu'à la décision, un dépôt non validé est remplacé aussitôt
+     */
+    JustificatifResponseDTO uploadJustificatif(MultipartFile file, String typeDocument, String remplaceId);
     List<JustificatifResponseDTO> getMyJustificatifs();
     List<JustificatifResponseDTO> getJustificatifsByProfessionnel(String professionnelId);
 

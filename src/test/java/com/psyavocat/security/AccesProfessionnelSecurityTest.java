@@ -67,9 +67,20 @@ class AccesProfessionnelSecurityTest {
     }
 
     @Test
-    @DisplayName("Catalogue public toujours accessible anonymement")
-    void catalogue_anonyme_200() throws Exception {
-        mockMvc.perform(get("/api/professionnels")).andExpect(status().isOk());
+    @DisplayName("Pas de mode invité : professionnels, créneaux, publications et orientation exigent une connexion")
+    void catalogue_anonyme_401() throws Exception {
+        mockMvc.perform(get("/api/professionnels")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/disponibilites/professionnel/avocat-1")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/contenus").param("type", "ARTICLE")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/orientation/questionnaires")).andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/orientation/evaluer").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("Référentiels publics : le formulaire d'inscription les charge avant la connexion")
+    void referentiels_anonyme_200() throws Exception {
+        mockMvc.perform(get("/api/referentiels/specialites")).andExpect(status().isOk());
     }
 
     // ------------------------------------------------------------------
@@ -148,7 +159,7 @@ class AccesProfessionnelSecurityTest {
     }
 
     @Test
-    @DisplayName("Créneaux d'un professionnel suspendu jamais proposés publiquement")
+    @DisplayName("Créneaux d'un professionnel suspendu jamais proposés aux clients")
     void creneauxPublics_professionnelSuspendu_vides() throws Exception {
         Professionnel pro = psychologue("SUSPENDED");
         Disponibilite d = new Disponibilite();
@@ -159,7 +170,9 @@ class AccesProfessionnelSecurityTest {
         d.setProfessionnel(pro);
         disponibiliteRepository.save(d);
 
-        mockMvc.perform(get("/api/disponibilites/professionnel/" + pro.getId()))
+        String token = connecter(client());
+        mockMvc.perform(get("/api/disponibilites/professionnel/" + pro.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
     }

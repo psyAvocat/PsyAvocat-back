@@ -247,34 +247,19 @@ public class OrientationServiceImpl implements OrientationService {
         resultat.setCategorieBesoin(categorieGagnante);
         resultat.setProfessionnelsRecommandes(new ArrayList<>(prosRecommandes));
 
-        Utilisateur user = obtenirUtilisateurCourant();
-        resultat.setUtilisateur(user);
-
-        if (user != null) {
-            resultat = resultatOrientationRepository.save(resultat);
-            List<ResultatOrientationCategorie> lignes = new ArrayList<>();
-            for (int i = 0; i < classement.size(); i++) {
-                ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
-                roc.setResultatOrientation(resultat);
-                roc.setCategorieBesoin(classement.get(i).getKey());
-                roc.setScore(classement.get(i).getValue());
-                roc.setRang(i + 1);
-                resultatCategorieRepository.save(roc);
-                lignes.add(roc);
-            }
-            resultat.setScoresParCategorie(lignes);
-        } else {
-            // Évaluation anonyme : calculée sans être enregistrée.
-            List<ResultatOrientationCategorie> lignes = new ArrayList<>();
-            for (int i = 0; i < classement.size(); i++) {
-                ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
-                roc.setCategorieBesoin(classement.get(i).getKey());
-                roc.setScore(classement.get(i).getValue());
-                roc.setRang(i + 1);
-                lignes.add(roc);
-            }
-            resultat.setScoresParCategorie(lignes);
+        resultat.setUtilisateur(obtenirUtilisateurCourant());
+        resultat = resultatOrientationRepository.save(resultat);
+        List<ResultatOrientationCategorie> lignes = new ArrayList<>();
+        for (int i = 0; i < classement.size(); i++) {
+            ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
+            roc.setResultatOrientation(resultat);
+            roc.setCategorieBesoin(classement.get(i).getKey());
+            roc.setScore(classement.get(i).getValue());
+            roc.setRang(i + 1);
+            resultatCategorieRepository.save(roc);
+            lignes.add(roc);
         }
+        resultat.setScoresParCategorie(lignes);
 
         return toResultatDto(resultat, statutDepartage);
     }
@@ -283,9 +268,6 @@ public class OrientationServiceImpl implements OrientationService {
     @Transactional(readOnly = true)
     public List<ResultatOrientationDTO> getMesResultats() {
         Utilisateur user = obtenirUtilisateurCourant();
-        if (user == null) {
-            return Collections.emptyList();
-        }
         return resultatOrientationRepository.findByUtilisateurIdOrderByDateEvaluationDesc(user.getId())
                 .stream()
                 .map(r -> toResultatDto(r, "ARCHIVE"))
@@ -331,10 +313,10 @@ public class OrientationServiceImpl implements OrientationService {
         return null;
     }
 
+    /** Utilisateur connecté (l'orientation n'est proposée qu'aux comptes connectés). */
     private Utilisateur obtenirUtilisateurCourant() {
-        return authenticationContext.getFirebaseUid()
-                .flatMap(utilisateurRepository::findById)
-                .orElse(null);
+        return utilisateurRepository.findById(authenticationContext.getRequiredFirebaseUid())
+                .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
     }
 
     // ------------------------------------------------------------------
