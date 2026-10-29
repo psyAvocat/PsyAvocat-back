@@ -9,4 +9,14 @@ import java.util.List;
 @Repository
 public interface JustificatifProfessionnelRepository extends JpaRepository<JustificatifProfessionnel, String> {
     List<JustificatifProfessionnel> findByProfessionnelId(String professionnelId);
+
+    /** Nouvelles versions (en attente ou refusées) d'un justificatif complémentaire. */
+    List<JustificatifProfessionnel> findByRemplaceId(String remplaceId);
+
+    List<JustificatifProfessionnel> findByProfessionnelIdAndTypeDocumentAndStatutValidation(
+            String professionnelId, String typeDocument, String statutValidation);
+
+    /** Documents en attente déposés par des professionnels d'un statut donné (ex. mises à jour des comptes validés). */
+    List<JustificatifProfessionnel> findByStatutValidationAndProfessionnelStatutValidationOrderByDateDepotAsc(
+            String statutValidation, String statutProfessionnel);
 }

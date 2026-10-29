@@ -25,10 +25,25 @@ public interface NotificationService {
     void markAllAsRead();
 
     /**
+     * Marque comme lues les notifications non lues d'un type de ressource (ex. RENDEZ_VOUS)
+     * lorsque l'utilisateur ouvre la page correspondante ; renvoie leur nombre.
+     */
+    int marquerLuesParType(String ressourceType);
+
+    /**
      * Marque comme lues les notifications d'un utilisateur liées à une ressource
      * (ex. les « Nouveau message » d'une conversation qu'il vient d'ouvrir).
      */
     void marquerLuesPourRessource(String destinataireId, String ressourceType, String ressourceId);
 
+    /** Retire les notifications non lues d'une ressource pour un destinataire (ex. message supprimé). */
+    void supprimerNonLuesPourRessource(String destinataireId, String ressourceType, String ressourceId);
+
+    /** Retire toutes les notifications d'une ressource effacée (ex. conversation supprimée par tous). */
+    void supprimerPourRessource(String ressourceType, String ressourceId);
+
     void deleteNotification(String id);
+
+    /** Supprime les notifications déjà lues de l'utilisateur connecté ; renvoie leur nombre. */
+    int supprimerLues();
 }

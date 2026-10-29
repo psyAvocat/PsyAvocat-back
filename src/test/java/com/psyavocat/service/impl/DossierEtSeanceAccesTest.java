@@ -63,7 +63,8 @@ class DossierEtSeanceAccesTest {
                 mock(PieceJointeRepository.class), mock(SpecialiteRepository.class),
                 mock(com.psyavocat.storage.service.DocumentStorageService.class));
         seanceService = new SeanceServiceImpl(fichePatientRepository, seanceRepository, noteSeanceRepository,
-                psychologueRepository, utilisateurRepository, rendezVousRepository, authenticationContext, acces);
+                psychologueRepository, utilisateurRepository, rendezVousRepository, authenticationContext, acces,
+                mock(com.psyavocat.mapper.MediaUrlResolver.class));
 
         avocatA = pro(new Avocat(), "avocat-a");
         avocatB = pro(new Avocat(), "avocat-b");

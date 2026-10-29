@@ -6,6 +6,7 @@ import com.psyavocat.dto.rendezvous.ModifierCreneauRequest;
 import com.psyavocat.dto.rendezvous.RendezVousResponseDTO;
 import com.psyavocat.entity.*;
 import com.psyavocat.exception.BadRequestException;
+import com.psyavocat.exception.ConflictException;
 import com.psyavocat.exception.ForbiddenException;
 import com.psyavocat.exception.ResourceNotFoundException;
 import com.psyavocat.mapper.MediaUrlResolver;
@@ -88,7 +89,7 @@ public class RendezVousServiceImpl implements RendezVousService {
         BigDecimal montantTotal = verifierTarif(psychologue, request.getMontantTotal());
 
         return reserver(client, psychologue, request.getDisponibiliteId(),
-                modeOuDefaut(request.getMode(), "VISIO"), montantTotal, request.getMotif());
+                modeOuDefaut(request.getMode(), "VISIO"), montantTotal, request.getMotif(), null);
     }
 
     /**
@@ -126,7 +127,7 @@ public class RendezVousServiceImpl implements RendezVousService {
             throw new BadRequestException("L'avocat n'a pas encore communiqué d'honoraires pour ce dossier");
         }
         RendezVousResponseDTO dto = reserver(client, soumission.getAvocat(), request.getDisponibiliteId(),
-                modeOuDefaut(request.getMode(), "CABINET"), montantTotal, null);
+                modeOuDefaut(request.getMode(), "CABINET"), montantTotal, null, soumission);
 
         // L'avocat ayant accepté est retenu ; la prise en charge exclusive est (ré)affirmée
         // pour les dossiers acceptés avant l'application de cette règle à l'acceptation.
@@ -153,8 +154,10 @@ public class RendezVousServiceImpl implements RendezVousService {
      * la seconde voit le créneau RESERVE et reçoit une erreur fonctionnelle.
      */
     private RendezVousResponseDTO reserver(Utilisateur client, Professionnel pro, String disponibiliteId,
-                                           String mode, BigDecimal montantTotal, String motif) {
+                                           String mode, BigDecimal montantTotal, String motif,
+                                           SoumissionDossier soumission) {
         Disponibilite disp = creneauLibreVerrouille(disponibiliteId, pro);
+        verifierClientDisponible(client, disp, null);
 
         disp.setStatut(CRENEAU_RESERVE);
         disponibiliteRepository.save(disp);
@@ -173,6 +176,7 @@ public class RendezVousServiceImpl implements RendezVousService {
         rdv.setPatient(client);
         rdv.setProfessionnel(pro);
         rdv.setDisponibilite(disp);
+        rdv.setSoumission(soumission);
 
         RendezVous savedRdv = rendezVousRepository.save(rdv);
 
@@ -240,6 +244,7 @@ public class RendezVousServiceImpl implements RendezVousService {
         }
 
         Disponibilite nouveau = creneauLibreVerrouille(request.getDisponibiliteId(), rdv.getProfessionnel());
+        verifierClientDisponible(rdv.getPatient(), nouveau, rdv.getId());
         nouveau.setStatut(CRENEAU_RESERVE);
         disponibiliteRepository.save(nouveau);
 
@@ -261,11 +266,24 @@ public class RendezVousServiceImpl implements RendezVousService {
 
     @Override
     public RendezVousResponseDTO annulerRendezVous(String id) {
+        return annulerRendezVous(id, null);
+    }
+
+    @Override
+    public RendezVousResponseDTO annulerRendezVous(String id, String motif) {
         String uid = authenticationContext.getRequiredFirebaseUid();
         RendezVous rdv = rendezVousDuParticipant(id);
 
         if ("ANNULE".equalsIgnoreCase(rdv.getStatut()) || "PASSE".equalsIgnoreCase(rdv.getStatut())) {
             throw new BadRequestException("Ce rendez-vous ne peut plus être annulé");
+        }
+        // Une fois commencé, le rendez-vous a eu lieu (ou est en cours) : plus d'annulation.
+        if (rdv.getDateHeure() != null && !rdv.getDateHeure().isAfter(LocalDateTime.now())) {
+            throw new BadRequestException("Ce rendez-vous a déjà commencé : il ne peut plus être annulé.");
+        }
+        String motifNettoye = motif != null && !motif.isBlank() ? motif.trim() : null;
+        if (motifNettoye != null && motifNettoye.length() > 300) {
+            throw new BadRequestException("Le motif d'annulation ne doit pas dépasser 300 caractères.");
         }
         // Côté praticien, l'annulation est une action métier : compte approuvé obligatoire.
         if (rdv.getProfessionnel() != null && rdv.getProfessionnel().getId().equals(uid)
@@ -288,7 +306,7 @@ public class RendezVousServiceImpl implements RendezVousService {
         }
 
         RendezVous saved = rendezVousRepository.save(rdv);
-        evenements.rendezVousAnnule(saved, uid);
+        evenements.rendezVousAnnule(saved, uid, motifNettoye);
         evenements.creneauMisAJour(d);
         return toDto(saved);
     }
@@ -346,6 +364,33 @@ public class RendezVousServiceImpl implements RendezVousService {
     }
 
     /** Créneau relu sous verrou et vérifié : libre, futur et appartenant au professionnel. */
+    /**
+     * Un client ne peut pas avoir deux rendez-vous actifs qui se chevauchent, avec le même
+     * praticien ou un autre ({@code rdvIgnore} : rendez-vous en cours de déplacement).
+     */
+    private void verifierClientDisponible(Utilisateur client, Disponibilite creneau, String rdvIgnore) {
+        if (client == null) {
+            return;
+        }
+        LocalDateTime debut = debutDe(creneau);
+        LocalDateTime fin = debut.plusMinutes(dureeDe(creneau));
+        // Un rendez-vous commencé jusqu'à 12 h avant peut encore chevaucher le créneau.
+        for (RendezVous r : rendezVousRepository.findByClientIdAndStatutInAndDateHeureBetween(
+                client.getId(), STATUTS_MODIFIABLES, debut.minusHours(12), fin)) {
+            if (r.getId().equals(rdvIgnore)) {
+                continue;
+            }
+            LocalDateTime finR = r.getDateHeure().plusMinutes(r.getDureeMinutes() != null ? r.getDureeMinutes() : 45);
+            if (r.getDateHeure().isBefore(fin) && finR.isAfter(debut)) {
+                boolean memePraticien = r.getProfessionnel() != null && creneau.getProfessionnel() != null
+                        && r.getProfessionnel().getId().equals(creneau.getProfessionnel().getId());
+                throw new ConflictException(memePraticien
+                        ? "Vous avez déjà un rendez-vous avec ce professionnel à ce moment-là."
+                        : "Vous avez déjà un rendez-vous à ce moment-là. Choisissez un autre créneau.");
+            }
+        }
+    }
+
     private Disponibilite creneauLibreVerrouille(String disponibiliteId, Professionnel pro) {
         Disponibilite disp = disponibiliteRepository.findByIdForUpdate(disponibiliteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Créneau de disponibilité introuvable"));
@@ -422,6 +467,15 @@ public class RendezVousServiceImpl implements RendezVousService {
                     .professionnelPhotoUrl(mediaUrlResolver.photoUrlOf(pro));
             if (pro.getSpecialites() != null && !pro.getSpecialites().isEmpty()) {
                 builder.professionnelSpecialite(pro.getSpecialites().get(0).getNom());
+            }
+        }
+
+        SoumissionDossier soumission = rdv.getSoumission();
+        if (soumission != null) {
+            builder.soumissionId(soumission.getId());
+            if (soumission.getDossier() != null) {
+                builder.dossierId(soumission.getDossier().getId())
+                        .dossierTitre(soumission.getDossier().getTitre());
             }
         }
 

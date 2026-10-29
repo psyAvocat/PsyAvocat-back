@@ -44,4 +44,8 @@ public class RendezVousResponseDTO {
     private String disponibiliteId;
     private String professionnelPhotoUrl;
     private String professionnelSpecialite;
+    /** Rendez-vous avocat : dossier concerné. */
+    private String soumissionId;
+    private String dossierId;
+    private String dossierTitre;
 }

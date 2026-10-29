@@ -1,5 +1,6 @@
 package com.psyavocat.service.impl;
 
+import com.psyavocat.dto.referentiel.CategorieBesoinDTO;
 import com.psyavocat.dto.referentiel.SpecialiteDTO;
 import com.psyavocat.entity.*;
 import com.psyavocat.exception.BadRequestException;
@@ -36,6 +37,7 @@ class MatchingEtReferentielTest {
     @Mock private ContenuRepository contenuRepository;
     @Mock private DossierRepository dossierRepository;
     @Mock private ResultatOrientationRepository resultatOrientationRepository;
+    @Mock private ResultatOrientationCategorieRepository resultatOrientationCategorieRepository;
     @Mock private RealtimeGateway realtimeGateway;
 
     private MatchingProfessionnelServiceImpl matching;
@@ -45,7 +47,8 @@ class MatchingEtReferentielTest {
     void setUp() {
         matching = new MatchingProfessionnelServiceImpl(professionnelRepository);
         referentiels = new ReferentielServiceImpl(domaineRepository, specialiteRepository, categorieBesoinRepository,
-                ponderationRepository, contenuRepository, dossierRepository, resultatOrientationRepository, realtimeGateway);
+                ponderationRepository, contenuRepository, dossierRepository, resultatOrientationRepository,
+                resultatOrientationCategorieRepository, realtimeGateway);
     }
 
     // ------------------------------------------------------------------
@@ -110,36 +113,116 @@ class MatchingEtReferentielTest {
     }
 
     @Test
-    @DisplayName("Spécialité : incohérence avec l'univers du domaine refusée")
-    void specialite_domaineAutreUnivers_refusee() {
-        Domaine domaine = new Domaine();
-        domaine.setId("dom-1");
-        domaine.setNom("Santé mentale");
-        domaine.setTypeProfessionnel("PSYCHOLOGUE");
-        when(domaineRepository.findById("dom-1")).thenReturn(Optional.of(domaine));
+    @DisplayName("Spécialité : rattachée au domaine fixe de son univers, quel que soit le domaine envoyé")
+    void specialite_domaineFixeDeLUnivers() {
+        Domaine juridique = domaineFixe("dom-jur", "JURIDIQUE", "Juridique", "AVOCAT");
+        when(domaineRepository.findByCode("JURIDIQUE")).thenReturn(Optional.of(juridique));
+        when(specialiteRepository.save(any(Specialite.class))).thenAnswer(i -> i.getArgument(0));
         SpecialiteDTO dto = new SpecialiteDTO();
         dto.setNom("Droit pénal");
         dto.setTypeProfessionnel("AVOCAT");
-        dto.setDomaineId("dom-1");
-
-        assertThatThrownBy(() -> referentiels.createSpecialite(dto)).isInstanceOf(BadRequestException.class);
-    }
-
-    @Test
-    @DisplayName("Spécialité : univers hérité du domaine et enregistré")
-    void specialite_universDuDomaine_enregistre() {
-        Domaine domaine = new Domaine();
-        domaine.setId("dom-2");
-        domaine.setTypeProfessionnel("AVOCAT");
-        when(domaineRepository.findById("dom-2")).thenReturn(Optional.of(domaine));
-        when(specialiteRepository.save(any(Specialite.class))).thenAnswer(i -> i.getArgument(0));
-        SpecialiteDTO dto = new SpecialiteDTO();
-        dto.setNom("Droit immobilier");
-        dto.setDomaineId("dom-2");
+        dto.setDomaineId("un-autre-domaine");
 
         SpecialiteDTO cree = referentiels.createSpecialite(dto);
 
         assertThat(cree.getTypeProfessionnel()).isEqualTo("AVOCAT");
+        assertThat(cree.getDomaineId()).isEqualTo("dom-jur");
+        assertThat(cree.getDomaineNom()).isEqualTo("Juridique");
+    }
+
+    @Test
+    @DisplayName("Spécialité Avocat : aucune catégorie de besoin enregistrée")
+    void specialiteAvocat_sansCategorie() {
+        when(specialiteRepository.save(any(Specialite.class))).thenAnswer(i -> i.getArgument(0));
+        SpecialiteDTO dto = new SpecialiteDTO();
+        dto.setNom("Droit du travail");
+        dto.setTypeProfessionnel("AVOCAT");
+        dto.setCategorieIds(List.of("cat"));
+
+        SpecialiteDTO cree = referentiels.createSpecialite(dto);
+
+        assertThat(cree.getCategorieIds()).isEmpty();
+        verify(categorieBesoinRepository, never()).findAllById(any());
+    }
+
+    // ------------------------------------------------------------------
+    // Domaines fixes et catégories de besoin
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("Domaine fixe : seule la description est modifiable")
+    void domaine_seuleDescriptionModifiable() {
+        Domaine psy = domaineFixe("dom-psy", "PSYCHOLOGIQUE", "Psychologique", "PSYCHOLOGUE");
+        when(domaineRepository.findById("dom-psy")).thenReturn(Optional.of(psy));
+        when(domaineRepository.save(any(Domaine.class))).thenAnswer(i -> i.getArgument(0));
+        com.psyavocat.dto.referentiel.DomaineDTO dto = new com.psyavocat.dto.referentiel.DomaineDTO();
+        dto.setNom("Autre nom");
+        dto.setTypeProfessionnel("AVOCAT");
+        dto.setDescription("Nouvelle description");
+
+        var modifie = referentiels.updateDomaine("dom-psy", dto);
+
+        assertThat(modifie.getNom()).isEqualTo("Psychologique");
+        assertThat(modifie.getTypeProfessionnel()).isEqualTo("PSYCHOLOGUE");
+        assertThat(modifie.getDescription()).isEqualTo("Nouvelle description");
+    }
+
+    @Test
+    @DisplayName("Catégorie de besoin destinée aux avocats : refusée")
+    void categorieAvocat_refusee() {
+        CategorieBesoinDTO dto = new CategorieBesoinDTO();
+        dto.setNom("Litige");
+        dto.setTypeProfessionnel("AVOCAT");
+
+        assertThatThrownBy(() -> referentiels.createCategorieBesoin(dto))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Psychologue");
+        verify(categorieBesoinRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Suppression d'une catégorie : retirée des spécialités et effacée de la base")
+    void categorie_supprimeeDefinitivement() {
+        Specialite tcc = specialite("spec-tcc", "PSYCHOLOGUE");
+        CategorieBesoin anxiete = categorie("PSYCHOLOGUE", tcc);
+        tcc.setCategoriesBesoin(new ArrayList<>(List.of(anxiete)));
+        when(categorieBesoinRepository.findById("cat")).thenReturn(Optional.of(anxiete));
+
+        referentiels.deleteCategorieBesoin("cat");
+
+        assertThat(tcc.getCategoriesBesoin()).isEmpty();
+        verify(categorieBesoinRepository).delete(anxiete);
+    }
+
+    @Test
+    @DisplayName("Suppression d'une catégorie présente dans l'historique : masquée partout, jamais réaffichée")
+    void categorie_historique_masquee() {
+        CategorieBesoin anxiete = categorie("PSYCHOLOGUE");
+        when(categorieBesoinRepository.findById("cat")).thenReturn(Optional.of(anxiete));
+        when(resultatOrientationRepository.existsByCategorieBesoinId("cat")).thenReturn(true);
+        when(categorieBesoinRepository.findAll()).thenReturn(List.of(anxiete));
+
+        referentiels.deleteCategorieBesoin("cat");
+
+        verify(categorieBesoinRepository, never()).delete(any());
+        assertThat(anxiete.getSupprime()).isTrue();
+        assertThat(anxiete.getActif()).isFalse();
+        // « Inclure inactives » : la catégorie supprimée n'apparaît pas.
+        assertThat(referentiels.getCategoriesBesoin(null, true)).isEmpty();
+        assertThatThrownBy(() -> referentiels.toggleActifCategorieBesoin("cat"))
+                .isInstanceOf(com.psyavocat.exception.ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("Suppression d'une catégorie utilisée par le questionnaire : refusée")
+    void categorie_utiliseeParPonderation_refusee() {
+        CategorieBesoin anxiete = categorie("PSYCHOLOGUE");
+        when(categorieBesoinRepository.findById("cat")).thenReturn(Optional.of(anxiete));
+        when(ponderationRepository.countByCategorieBesoinId("cat")).thenReturn(2L);
+
+        assertThatThrownBy(() -> referentiels.deleteCategorieBesoin("cat")).isInstanceOf(ConflictException.class);
+        verify(categorieBesoinRepository, never()).delete(any());
+        verify(categorieBesoinRepository, never()).save(any());
     }
 
     @Test
@@ -151,6 +234,15 @@ class MatchingEtReferentielTest {
 
         assertThatThrownBy(() -> referentiels.deleteSpecialite("s-1")).isInstanceOf(ConflictException.class);
         verify(specialiteRepository, never()).delete(any());
+    }
+
+    private Domaine domaineFixe(String id, String code, String nom, String type) {
+        Domaine d = new Domaine();
+        d.setId(id);
+        d.setCode(code);
+        d.setNom(nom);
+        d.setTypeProfessionnel(type);
+        return d;
     }
 
     private Specialite specialite(String id, String type) {

@@ -3,6 +3,7 @@ package com.psyavocat.storage.r2;
 import com.psyavocat.exception.ApiException;
 import com.psyavocat.exception.BadRequestException;
 import com.psyavocat.storage.model.StoredImage;
+import com.psyavocat.storage.service.ImageOptimizer;
 import com.psyavocat.storage.service.ImageStorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,10 +73,19 @@ public class R2MediaStorageService implements ImageStorageService {
             throw new ApiException("Le service de stockage de médias Cloudflare R2 est temporairement indisponible.", HttpStatus.SERVICE_UNAVAILABLE) {};
         }
 
-        String extension = extraireExtension(file);
         String cleanDossier = (dossier != null && !dossier.isBlank())
                 ? dossier.replaceAll("^/+", "").replaceAll("/+$", "")
                 : "media";
+
+        // Image allégée avant envoi (redimensionnée, ré-encodée, métadonnées retirées).
+        ImageOptimizer.Resultat image;
+        try {
+            image = ImageOptimizer.optimiser(file.getBytes(), file.getContentType(), extraireExtension(file),
+                    ImageOptimizer.tailleMax(cleanDossier));
+        } catch (IOException ex) {
+            throw new ApiException("Erreur lors de la lecture du fichier image : " + ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR) {};
+        }
+        String extension = image.extension();
         String prefixPart = (idPrefix != null && !idPrefix.isBlank())
                 ? idPrefix.trim().replaceAll("[^a-zA-Z0-9_-]", "_") + "_"
                 : "";
@@ -85,11 +95,13 @@ public class R2MediaStorageService implements ImageStorageService {
             PutObjectRequest putRequest = PutObjectRequest.builder()
                     .bucket(mediaBucket)
                     .key(objectKey)
-                    .contentType(file.getContentType())
-                    .contentLength(file.getSize())
+                    .contentType(image.contentType())
+                    .contentLength((long) image.octets().length)
+                    // Clé unique par image : elle peut être gardée en cache longtemps par les clients.
+                    .cacheControl("private, max-age=31536000, immutable")
                     .build();
 
-            s3Client.putObject(putRequest, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+            s3Client.putObject(putRequest, RequestBody.fromBytes(image.octets()));
             log.info("Image téléversée avec succès dans Cloudflare R2 (bucket={}) : cle={}", mediaBucket, objectKey);
 
             String url = genererUrlAcces(objectKey);
@@ -99,12 +111,9 @@ public class R2MediaStorageService implements ImageStorageService {
                     .publicId(objectKey)
                     .objectKey(objectKey)
                     .format(extension)
-                    .bytes(file.getSize())
+                    .bytes((long) image.octets().length)
                     .build();
 
-        } catch (IOException ex) {
-            log.error("Erreur de lecture du flux image pour R2 : {}", ex.getMessage(), ex);
-            throw new ApiException("Erreur lors de la lecture du fichier image : " + ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR) {};
         } catch (S3Exception ex) {
             log.error("Erreur S3/R2 lors du téléversement de l'image (cle={}) : {}", objectKey, ex.getMessage(), ex);
             throw new ApiException("Échec du téléversement vers Cloudflare R2 : " + ex.awsErrorDetails().errorMessage(), HttpStatus.BAD_GATEWAY) {};

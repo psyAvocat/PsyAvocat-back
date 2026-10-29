@@ -37,6 +37,13 @@ public class JustificatifProfessionnel {
 
     private LocalDate dateDepot;
 
+    /**
+     * Justificatif complémentaire validé que cette nouvelle version remplacera si l'administration
+     * l'approuve (null pour un dépôt indépendant). Les documents obligatoires se remplacent par type.
+     */
+    @Column(name = "remplace_id")
+    private String remplaceId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "professionnel_id", nullable = false)
     private Professionnel professionnel;

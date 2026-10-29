@@ -51,13 +51,20 @@ public class RendezVousEvenements {
 
     /** Prévient l'autre partie de l'annulation. */
     public void rendezVousAnnule(RendezVous rdv, String annuleParId) {
+        rendezVousAnnule(rdv, annuleParId, null);
+    }
+
+    /** Annulation par l'une des parties : l'autre est prévenue, avec le motif s'il est donné. */
+    public void rendezVousAnnule(RendezVous rdv, String annuleParId, String motif) {
         boolean parLeClient = rdv.getPatient() != null && rdv.getPatient().getId().equals(annuleParId);
+        String suite = motif != null ? " Motif : " + motif : "";
         if (parLeClient) {
             notifierPraticien(rdv, "RDV_ANNULE", "Rendez-vous annulé",
-                    nomClient(rdv) + " a annulé le rendez-vous du " + quand(rdv) + ".");
+                    nomClient(rdv) + " a annulé le rendez-vous du " + quand(rdv) + "." + suite);
         } else {
             notifierClient(rdv, "RDV_ANNULE", "Rendez-vous annulé",
-                    nomPraticien(rdv) + " a annulé votre rendez-vous du " + quand(rdv) + ".");
+                    nomPraticien(rdv) + " a annulé votre rendez-vous du " + quand(rdv) + "." + suite
+                            + " Vous pouvez choisir un autre créneau.");
         }
     }
 

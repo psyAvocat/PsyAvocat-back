@@ -10,6 +10,7 @@ import com.psyavocat.entity.RendezVous;
 import com.psyavocat.exception.BadRequestException;
 import com.psyavocat.exception.ForbiddenException;
 import com.psyavocat.exception.ResourceNotFoundException;
+import com.psyavocat.mapper.MediaUrlResolver;
 import com.psyavocat.repository.*;
 import com.psyavocat.security.AuthenticationContext;
 import com.psyavocat.service.SeanceService;
@@ -36,6 +37,7 @@ public class SeanceServiceImpl implements SeanceService {
     private final RendezVousRepository rendezVousRepository;
     private final AuthenticationContext authenticationContext;
     private final AccesProfessionnel accesProfessionnel;
+    private final MediaUrlResolver mediaUrlResolver;
 
     public SeanceServiceImpl(
             FichePatientRepository fichePatientRepository,
@@ -45,7 +47,8 @@ public class SeanceServiceImpl implements SeanceService {
             UtilisateurRepository utilisateurRepository,
             RendezVousRepository rendezVousRepository,
             AuthenticationContext authenticationContext,
-            AccesProfessionnel accesProfessionnel
+            AccesProfessionnel accesProfessionnel,
+            MediaUrlResolver mediaUrlResolver
     ) {
         this.fichePatientRepository = fichePatientRepository;
         this.seanceRepository = seanceRepository;
@@ -55,6 +58,7 @@ public class SeanceServiceImpl implements SeanceService {
         this.rendezVousRepository = rendezVousRepository;
         this.authenticationContext = authenticationContext;
         this.accesProfessionnel = accesProfessionnel;
+        this.mediaUrlResolver = mediaUrlResolver;
     }
 
     @Override
@@ -193,7 +197,8 @@ public class SeanceServiceImpl implements SeanceService {
                     .patientNom(f.getPatient().getNom())
                     .patientPrenom(f.getPatient().getPrenom())
                     .patientEmail(f.getPatient().getEmail())
-                    .patientTelephone(f.getPatient().getTelephone());
+                    .patientTelephone(f.getPatient().getTelephone())
+                    .patientPhotoUrl(mediaUrlResolver.photoUrlOf(f.getPatient()));
         }
 
         return builder.build();
@@ -221,7 +226,8 @@ public class SeanceServiceImpl implements SeanceService {
                    .patientNom(p.getNom())
                    .patientPrenom(p.getPrenom())
                    .patientEmail(p.getEmail())
-                   .patientTelephone(p.getTelephone());
+                   .patientTelephone(p.getTelephone())
+                   .patientPhotoUrl(mediaUrlResolver.photoUrlOf(p));
         }
 
         return builder.build();

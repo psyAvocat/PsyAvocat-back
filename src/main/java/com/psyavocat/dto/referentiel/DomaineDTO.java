@@ -13,9 +13,12 @@ import java.util.List;
 @AllArgsConstructor
 public class DomaineDTO {
     private String id;
+    /** PSYCHOLOGIQUE ou JURIDIQUE : les deux domaines sont fixes. */
+    private String code;
     private String nom;
     private String description;
     /** AVOCAT ou PSYCHOLOGUE. */
     private String typeProfessionnel;
     private List<SpecialiteDTO> specialites;
+    private Long nombreSpecialites;
 }

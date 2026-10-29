@@ -429,7 +429,76 @@ class RendezVousServiceTest {
 
         assertThat(dto.getStatut()).isEqualTo("ANNULE");
         verify(rendezVousRepository).save(rdv);
-        verify(evenements).rendezVousAnnule(rdv, patient.getId());
+        verify(evenements).rendezVousAnnule(rdv, patient.getId(), null);
+    }
+
+    @Test
+    @DisplayName("Annulation par le praticien : le motif est transmis au client")
+    void testAnnulerRendezVous_MotifTransmis() {
+        RendezVous rdv = new RendezVous();
+        rdv.setId("rdv-1");
+        rdv.setStatut("CONFIRME");
+        rdv.setDateHeure(LocalDateTime.now().plusDays(1));
+        rdv.setPatient(patient);
+        rdv.setProfessionnel(psychologue);
+
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(psychologue.getId());
+        when(rendezVousRepository.findById(rdv.getId())).thenReturn(Optional.of(rdv));
+        when(rendezVousRepository.save(any(RendezVous.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        rendezVousService.annulerRendezVous(rdv.getId(), "  Empêchement de dernière minute  ");
+
+        verify(evenements).rendezVousAnnule(rdv, psychologue.getId(), "Empêchement de dernière minute");
+    }
+
+    @Test
+    @DisplayName("Annulation refusée une fois le rendez-vous commencé")
+    void testAnnulerRendezVous_DejaCommence_Rejet() {
+        RendezVous rdv = new RendezVous();
+        rdv.setId("rdv-1");
+        rdv.setStatut("CONFIRME");
+        rdv.setDateHeure(LocalDateTime.now().minusMinutes(10));
+        rdv.setPatient(patient);
+        rdv.setProfessionnel(psychologue);
+
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(patient.getId());
+        when(rendezVousRepository.findById(rdv.getId())).thenReturn(Optional.of(rdv));
+
+        assertThatThrownBy(() -> rendezVousService.annulerRendezVous(rdv.getId()))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("déjà commencé");
+        verify(rendezVousRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Réservation refusée si le client a déjà un rendez-vous à la même heure")
+    void testCreateRendezVous_ClientDejaOccupe_Rejet() {
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn(patient.getId());
+        when(utilisateurRepository.findById(patient.getId())).thenReturn(Optional.of(patient));
+        when(psychologueRepository.findById(psychologue.getId())).thenReturn(Optional.of(psychologue));
+        when(disponibiliteRepository.findByIdForUpdate(disponibilite.getId())).thenReturn(Optional.of(disponibilite));
+
+        RendezVous existant = new RendezVous();
+        existant.setId("rdv-existant");
+        existant.setStatut("CONFIRME");
+        existant.setDateHeure(LocalDateTime.of(disponibilite.getDate(), disponibilite.getHeureDebut()));
+        existant.setDureeMinutes(60);
+        existant.setPatient(patient);
+        existant.setProfessionnel(psychologue);
+        when(rendezVousRepository.findByClientIdAndStatutInAndDateHeureBetween(eq(patient.getId()), any(), any(), any()))
+                .thenReturn(List.of(existant));
+
+        CreateRendezVousPsyRequest request = new CreateRendezVousPsyRequest();
+        request.setPsychologueId(psychologue.getId());
+        request.setDisponibiliteId(disponibilite.getId());
+        request.setMontantTotal(new BigDecimal("80.00"));
+        request.setMode("VISIO");
+
+        assertThatThrownBy(() -> rendezVousService.createRendezVousPsychologue(request))
+                .isInstanceOf(com.psyavocat.exception.ConflictException.class)
+                .hasMessageContaining("avec ce professionnel");
+        assertThat(disponibilite.getStatut()).isEqualTo("LIBRE");
+        verify(rendezVousRepository, never()).save(any());
     }
 
     @Test

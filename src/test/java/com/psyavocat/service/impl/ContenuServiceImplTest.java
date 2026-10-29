@@ -37,6 +37,7 @@ class ContenuServiceImplTest {
     @Mock private ImageStorageService imageStorageService;
     @Mock private MediaUrlResolver mediaUrlResolver;
     @Mock private RealtimeGateway realtimeGateway;
+    @Mock private com.psyavocat.repository.LectureContenuRepository lectureContenuRepository;
 
     @InjectMocks private ContenuServiceImpl service;
 
@@ -170,7 +171,7 @@ class ContenuServiceImplTest {
         contenu.setId("contenu-1");
         contenu.setActif(false);
         contenu.setAuteur(avocatValide());
-        when(authenticationContext.getFirebaseUid()).thenReturn(Optional.of("client-1"));
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("client-1");
         when(contenuRepository.findById("contenu-1")).thenReturn(Optional.of(contenu));
 
         assertThatThrownBy(() -> service.getContenu("contenu-1"))
@@ -230,7 +231,7 @@ class ContenuServiceImplTest {
     @Test
     @DisplayName("Un professionnel ne consulte pas la liste publique (réservée à l'app mobile)")
     void professionnel_nePeutPasListerLesPublications() {
-        when(authenticationContext.getFirebaseUid()).thenReturn(Optional.of("avocat-1"));
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("avocat-1");
         when(utilisateurRepository.findById("avocat-1")).thenReturn(Optional.of(avocatValide()));
 
         assertThatThrownBy(() -> service.rechercher("ARTICLE", null, null, null))
@@ -244,7 +245,7 @@ class ContenuServiceImplTest {
         Contenu contenu = contenuPublie("contenu-1", avocatValide());
         Psychologue psy = new Psychologue();
         psy.setId("psy-1");
-        when(authenticationContext.getFirebaseUid()).thenReturn(Optional.of("psy-1"));
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("psy-1");
         when(contenuRepository.findById("contenu-1")).thenReturn(Optional.of(contenu));
         when(utilisateurRepository.findById("psy-1")).thenReturn(Optional.of(psy));
 
@@ -258,29 +259,52 @@ class ContenuServiceImplTest {
         connecterClient();
         Contenu contenu = contenuPublie("contenu-1", avocatValide());
         when(contenuRepository.findById("contenu-1")).thenReturn(Optional.of(contenu));
+        when(lectureContenuRepository.enregistrerPremiereLecture(any(), eq("contenu-1"), eq("client-1"), any()))
+                .thenReturn(1);
 
         assertThat(service.getContenu("contenu-1").getId()).isEqualTo("contenu-1");
         verify(contenuRepository).incrementerVues("contenu-1");
     }
 
     @Test
-    @DisplayName("Un visiteur non connecté (mode invité) lit les publications publiées")
-    void visiteur_litLesPublications() {
+    @DisplayName("Un client qui relit une publication ne la rend pas plus populaire")
+    void client_relitLeDetail_nonCompte() {
+        connecterClient();
         Contenu contenu = contenuPublie("contenu-1", avocatValide());
-        when(contenuRepository.rechercherPublies("ARTICLE", null, null)).thenReturn(java.util.List.of(contenu));
         when(contenuRepository.findById("contenu-1")).thenReturn(Optional.of(contenu));
+        when(lectureContenuRepository.enregistrerPremiereLecture(any(), eq("contenu-1"), eq("client-1"), any()))
+                .thenReturn(0);
 
-        assertThat(service.rechercher("ARTICLE", null, null, "recent"))
+        service.getContenu("contenu-1");
+
+        verify(contenuRepository, never()).incrementerVues(any());
+    }
+
+    @Test
+    @DisplayName("Populaires : plus de lecteurs d'abord, puis la plus récente à égalité")
+    void tri_populaire() {
+        connecterClient();
+        Contenu ancien = contenuPublie("ancien", avocatValide());
+        ancien.setNombreVues(3L);
+        ancien.setDatePublication(java.time.LocalDateTime.now().minusDays(30));
+        Contenu recentEgal = contenuPublie("recent-egal", avocatValide());
+        recentEgal.setNombreVues(3L);
+        recentEgal.setDatePublication(java.time.LocalDateTime.now().minusDays(1));
+        Contenu lePlusLu = contenuPublie("le-plus-lu", avocatValide());
+        lePlusLu.setNombreVues(10L);
+        lePlusLu.setDatePublication(java.time.LocalDateTime.now().minusDays(60));
+        when(contenuRepository.rechercherPublies("ARTICLE", null, null))
+                .thenReturn(java.util.List.of(ancien, lePlusLu, recentEgal));
+
+        assertThat(service.rechercher("ARTICLE", null, null, "populaire"))
                 .extracting(ContenuResponseDTO::getId)
-                .containsExactly("contenu-1");
-        assertThat(service.getContenu("contenu-1").getId()).isEqualTo("contenu-1");
-        verify(utilisateurRepository, never()).findById(any());
+                .containsExactly("le-plus-lu", "recent-egal", "ancien");
     }
 
     private void connecterClient() {
         Client client = new Client();
         client.setId("client-1");
-        when(authenticationContext.getFirebaseUid()).thenReturn(Optional.of("client-1"));
+        when(authenticationContext.getRequiredFirebaseUid()).thenReturn("client-1");
         when(utilisateurRepository.findById("client-1")).thenReturn(Optional.of(client));
     }
 

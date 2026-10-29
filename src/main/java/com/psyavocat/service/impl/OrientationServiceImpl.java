@@ -114,16 +114,24 @@ public class OrientationServiceImpl implements OrientationService {
     // Lecture publique (clients)
     // ------------------------------------------------------------------
 
-    /** Questionnaires publiés : uniquement actifs et psychologiques. */
+    /** Questionnaire publié : le questionnaire d'orientation psychologique (une liste d'au plus un élément). */
     @Override
     @Transactional(readOnly = true)
     public List<QuestionnaireDTO> getQuestionnaires(String type) {
         if (type != null && !type.isBlank() && !TYPE_PSYCHOLOGIQUE.equalsIgnoreCase(type.trim())) {
             return List.of();
         }
-        return questionnaireRepository.findAllByTypeAndActifTrue(TYPE_PSYCHOLOGIQUE).stream()
-                .map(this::toQuestionnaireDto)
-                .toList();
+        return questionnairePublie().map(this::toQuestionnaireDto).stream().toList();
+    }
+
+    /**
+     * Le questionnaire d'orientation psychologique s'il est publié (repéré par son code) ;
+     * à défaut, le questionnaire psychologique actif (données antérieures à l'initialisation).
+     */
+    private java.util.Optional<Questionnaire> questionnairePublie() {
+        return questionnaireRepository.findByCode(com.psyavocat.service.support.QuestionnaireOrientation.CODE)
+                .filter(q -> Boolean.TRUE.equals(q.getActif()))
+                .or(() -> questionnaireRepository.findAllByTypeAndActifTrue(TYPE_PSYCHOLOGIQUE).stream().findFirst());
     }
 
     /** Questionnaire publié du type demandé ; jamais de repli sur un questionnaire inactif. */
@@ -133,8 +141,7 @@ public class OrientationServiceImpl implements OrientationService {
         if (type == null || !TYPE_PSYCHOLOGIQUE.equalsIgnoreCase(type.trim())) {
             throw new ResourceNotFoundException("Aucun questionnaire d'orientation n'est proposé pour ce parcours.");
         }
-        return questionnaireRepository.findAllByTypeAndActifTrue(TYPE_PSYCHOLOGIQUE).stream()
-                .findFirst()
+        return questionnairePublie()
                 .map(this::toQuestionnaireDto)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Aucun questionnaire d'orientation n'est publié pour le moment."));
@@ -240,34 +247,19 @@ public class OrientationServiceImpl implements OrientationService {
         resultat.setCategorieBesoin(categorieGagnante);
         resultat.setProfessionnelsRecommandes(new ArrayList<>(prosRecommandes));
 
-        Utilisateur user = obtenirUtilisateurCourant();
-        resultat.setUtilisateur(user);
-
-        if (user != null) {
-            resultat = resultatOrientationRepository.save(resultat);
-            List<ResultatOrientationCategorie> lignes = new ArrayList<>();
-            for (int i = 0; i < classement.size(); i++) {
-                ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
-                roc.setResultatOrientation(resultat);
-                roc.setCategorieBesoin(classement.get(i).getKey());
-                roc.setScore(classement.get(i).getValue());
-                roc.setRang(i + 1);
-                resultatCategorieRepository.save(roc);
-                lignes.add(roc);
-            }
-            resultat.setScoresParCategorie(lignes);
-        } else {
-            // Évaluation anonyme : calculée sans être enregistrée.
-            List<ResultatOrientationCategorie> lignes = new ArrayList<>();
-            for (int i = 0; i < classement.size(); i++) {
-                ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
-                roc.setCategorieBesoin(classement.get(i).getKey());
-                roc.setScore(classement.get(i).getValue());
-                roc.setRang(i + 1);
-                lignes.add(roc);
-            }
-            resultat.setScoresParCategorie(lignes);
+        resultat.setUtilisateur(obtenirUtilisateurCourant());
+        resultat = resultatOrientationRepository.save(resultat);
+        List<ResultatOrientationCategorie> lignes = new ArrayList<>();
+        for (int i = 0; i < classement.size(); i++) {
+            ResultatOrientationCategorie roc = new ResultatOrientationCategorie();
+            roc.setResultatOrientation(resultat);
+            roc.setCategorieBesoin(classement.get(i).getKey());
+            roc.setScore(classement.get(i).getValue());
+            roc.setRang(i + 1);
+            resultatCategorieRepository.save(roc);
+            lignes.add(roc);
         }
+        resultat.setScoresParCategorie(lignes);
 
         return toResultatDto(resultat, statutDepartage);
     }
@@ -276,9 +268,6 @@ public class OrientationServiceImpl implements OrientationService {
     @Transactional(readOnly = true)
     public List<ResultatOrientationDTO> getMesResultats() {
         Utilisateur user = obtenirUtilisateurCourant();
-        if (user == null) {
-            return Collections.emptyList();
-        }
         return resultatOrientationRepository.findByUtilisateurIdOrderByDateEvaluationDesc(user.getId())
                 .stream()
                 .map(r -> toResultatDto(r, "ARCHIVE"))
@@ -324,10 +313,10 @@ public class OrientationServiceImpl implements OrientationService {
         return null;
     }
 
+    /** Utilisateur connecté (l'orientation n'est proposée qu'aux comptes connectés). */
     private Utilisateur obtenirUtilisateurCourant() {
-        return authenticationContext.getFirebaseUid()
-                .flatMap(utilisateurRepository::findById)
-                .orElse(null);
+        return utilisateurRepository.findById(authenticationContext.getRequiredFirebaseUid())
+                .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
     }
 
     // ------------------------------------------------------------------

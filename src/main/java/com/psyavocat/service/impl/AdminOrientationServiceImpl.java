@@ -5,7 +5,6 @@ import com.psyavocat.dto.orientation.PonderationDTO;
 import com.psyavocat.dto.orientation.QuestionCompleteCreateRequest;
 import com.psyavocat.dto.orientation.QuestionCreateRequest;
 import com.psyavocat.dto.orientation.QuestionDTO;
-import com.psyavocat.dto.orientation.QuestionnaireCreateRequest;
 import com.psyavocat.dto.orientation.QuestionnaireDTO;
 import com.psyavocat.dto.orientation.ReponseCreateRequest;
 import com.psyavocat.dto.orientation.ReponseDTO;
@@ -24,13 +23,13 @@ import com.psyavocat.repository.QuestionnaireRepository;
 import com.psyavocat.repository.ReponseRepository;
 import com.psyavocat.repository.SpecialiteRepository;
 import com.psyavocat.service.AdminOrientationService;
+import com.psyavocat.service.support.QuestionnaireOrientation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -53,83 +52,17 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
     // QUESTIONNAIRES
     // =========================================================================
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<QuestionnaireDTO> getAllQuestionnaires() {
-        return questionnaireRepository.findAll().stream()
-                .sorted(Comparator.comparing(Questionnaire::getTitre))
-                .map(this::toQuestionnaireDTO)
-                .toList();
+    /** Le questionnaire d'orientation psychologique, créé au démarrage par QuestionnaireOrientationInitializer. */
+    private Questionnaire questionnaireOrientation() {
+        return questionnaireRepository.findByCode(QuestionnaireOrientation.CODE)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Le questionnaire d'orientation psychologique n'est pas encore initialisé : redémarrez le serveur."));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public QuestionnaireDTO getQuestionnaireById(String id) {
-        Questionnaire q = questionnaireRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + id));
-        return toQuestionnaireDTO(q);
-    }
-
-    /** Seule l'orientation psychologique est proposée (aucun questionnaire juridique en V1). */
-    static final String TYPE_PSYCHOLOGIQUE = "PSYCHOLOGIQUE";
-
-    @Override
-    public QuestionnaireDTO createQuestionnaire(QuestionnaireCreateRequest request) {
-        if (StringUtils.hasText(request.getCode()) && questionnaireRepository.existsByCode(request.getCode())) {
-            throw new BadRequestException("Un questionnaire avec le code '" + request.getCode() + "' existe déjà");
-        }
-        Questionnaire q = new Questionnaire();
-        q.setTitre(request.getTitre().trim());
-        q.setCode(StringUtils.hasText(request.getCode()) ? request.getCode().trim().toUpperCase() : null);
-        q.setType(typeValide(request.getType()));
-        q.setActif(request.getActif() != null ? request.getActif() : true);
-        Questionnaire saved = questionnaireRepository.save(q);
-        if (Boolean.TRUE.equals(saved.getActif())) {
-            desactiverLesAutres(saved);
-        }
-        log.info("Admin: questionnaire créé [{}] type={}", saved.getId(), saved.getType());
-        return toQuestionnaireDTO(saved);
-    }
-
-    @Override
-    public QuestionnaireDTO updateQuestionnaire(String id, QuestionnaireCreateRequest request) {
-        Questionnaire q = questionnaireRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + id));
-        q.setTitre(request.getTitre().trim());
-        if (StringUtils.hasText(request.getCode())) {
-            q.setCode(request.getCode().trim().toUpperCase());
-        }
-        q.setType(typeValide(request.getType()));
-        if (request.getActif() != null) {
-            q.setActif(request.getActif());
-        }
-        Questionnaire saved = questionnaireRepository.save(q);
-        if (Boolean.TRUE.equals(saved.getActif())) {
-            desactiverLesAutres(saved);
-        }
-        return toQuestionnaireDTO(saved);
-    }
-
-    private String typeValide(String type) {
-        String normalise = type != null ? type.trim().toUpperCase() : "";
-        if (!TYPE_PSYCHOLOGIQUE.equals(normalise)) {
-            throw new BadRequestException("Seuls les questionnaires d'orientation psychologique sont pris en charge.");
-        }
-        return normalise;
-    }
-
-    /**
-     * Un seul questionnaire actif par type : publier un questionnaire retire le précédent
-     * de la publication (ses résultats déjà enregistrés sont conservés).
-     */
-    private void desactiverLesAutres(Questionnaire actif) {
-        for (Questionnaire autre : questionnaireRepository.findAllByTypeAndActifTrue(actif.getType())) {
-            if (!autre.getId().equals(actif.getId())) {
-                autre.setActif(false);
-                questionnaireRepository.save(autre);
-                log.info("Admin: questionnaire [{}] retiré de la publication au profit de [{}]", autre.getId(), actif.getId());
-            }
-        }
+    public QuestionnaireDTO getQuestionnaireOrientation() {
+        return toQuestionnaireDTO(questionnaireOrientation());
     }
 
     @Override
@@ -148,19 +81,6 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
         return toReponseDTO(reponseRepository.save(r));
     }
 
-    @Override
-    public void deleteQuestionnaire(String id) {
-        Questionnaire q = questionnaireRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + id));
-        if (q.getResultats() != null && !q.getResultats().isEmpty()) {
-            throw new BadRequestException("Impossible de supprimer ce questionnaire car il possède un historique de "
-                    + q.getResultats().size() + " résultat(s) d'évaluation de patients/justiciables. "
-                    + "Veuillez désactiver le questionnaire pour qu'il ne soit plus proposé aux utilisateurs.");
-        }
-        log.info("Admin: suppression questionnaire [{}]", id);
-        questionnaireRepository.delete(q);
-    }
-
     // =========================================================================
     // QUESTIONS
     // =========================================================================
@@ -168,9 +88,10 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
     @Override
     @Transactional(readOnly = true)
     public List<QuestionDTO> getQuestionsByQuestionnaire(String questionnaireId) {
-        questionnaireRepository.findById(questionnaireId)
-                .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + questionnaireId));
-        return questionRepository.findByQuestionnaireIdOrderByOrdreAsc(questionnaireId)
+        String id = StringUtils.hasText(questionnaireId) ? questionnaireId : questionnaireOrientation().getId();
+        questionnaireRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + id));
+        return questionRepository.findByQuestionnaireIdOrderByOrdreAsc(id)
                 .stream()
                 .map(this::toQuestionDTO)
                 .toList();
@@ -186,11 +107,10 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
 
     @Override
     public QuestionDTO createQuestion(QuestionCreateRequest request) {
-        Questionnaire questionnaire = questionnaireRepository.findById(request.getQuestionnaireId())
-                .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + request.getQuestionnaireId()));
+        Questionnaire questionnaire = questionnaireOrientation();
 
         if (StringUtils.hasText(request.getCode()) &&
-                questionRepository.existsByQuestionnaireIdAndCode(request.getQuestionnaireId(), request.getCode())) {
+                questionRepository.existsByQuestionnaireIdAndCode(questionnaire.getId(), request.getCode())) {
             throw new BadRequestException("Une question avec ce code existe déjà dans ce questionnaire");
         }
 
@@ -204,17 +124,16 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
         q.setQuestionnaire(questionnaire);
 
         Question saved = questionRepository.save(q);
-        log.info("Admin: question créée [{}] dans questionnaire [{}]", saved.getId(), request.getQuestionnaireId());
+        log.info("Admin: question créée [{}] dans questionnaire [{}]", saved.getId(), questionnaire.getId());
         return toQuestionDTO(saved);
     }
 
     @Override
     public QuestionDTO createQuestionComplete(QuestionCompleteCreateRequest request) {
-        Questionnaire questionnaire = questionnaireRepository.findById(request.getQuestionnaireId())
-                .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + request.getQuestionnaireId()));
+        Questionnaire questionnaire = questionnaireOrientation();
 
         if (StringUtils.hasText(request.getCode()) &&
-                questionRepository.existsByQuestionnaireIdAndCode(request.getQuestionnaireId(), request.getCode())) {
+                questionRepository.existsByQuestionnaireIdAndCode(questionnaire.getId(), request.getCode())) {
             throw new BadRequestException("Une question avec ce code existe déjà dans ce questionnaire");
         }
 
@@ -300,12 +219,7 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
         if (StringUtils.hasText(request.getTypeReponse())) {
             q.setTypeReponse(request.getTypeReponse().trim());
         }
-        // Réaffectation à un autre questionnaire si demandé
-        if (StringUtils.hasText(request.getQuestionnaireId())) {
-            Questionnaire questionnaire = questionnaireRepository.findById(request.getQuestionnaireId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + request.getQuestionnaireId()));
-            q.setQuestionnaire(questionnaire);
-        }
+        // La question reste dans son questionnaire (pas de réaffectation).
         return toQuestionDTO(questionRepository.save(q));
     }
 
@@ -314,13 +228,9 @@ public class AdminOrientationServiceImpl implements AdminOrientationService {
         Question q = questionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Question introuvable : " + id));
 
-        Questionnaire questionnaire = q.getQuestionnaire();
-        if (StringUtils.hasText(request.getQuestionnaireId()) &&
-                (questionnaire == null || !request.getQuestionnaireId().equals(questionnaire.getId()))) {
-            questionnaire = questionnaireRepository.findById(request.getQuestionnaireId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Questionnaire introuvable : " + request.getQuestionnaireId()));
-            q.setQuestionnaire(questionnaire);
-        }
+        // La question reste dans son questionnaire (pas de réaffectation).
+        Questionnaire questionnaire = q.getQuestionnaire() != null ? q.getQuestionnaire() : questionnaireOrientation();
+        q.setQuestionnaire(questionnaire);
 
         q.setTexte(request.getTexte().trim());
         if (StringUtils.hasText(request.getCode())) {

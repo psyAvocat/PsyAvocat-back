@@ -30,23 +30,11 @@ public class ReferentielController {
         return ResponseEntity.ok(referentielService.getAllDomaines());
     }
 
-    @PostMapping("/domaines")
-    @PreAuthorize("hasRole('ADMINISTRATEUR')")
-    public ResponseEntity<DomaineDTO> createDomaine(@RequestBody DomaineDTO dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(referentielService.createDomaine(dto));
-    }
-
+    /** Les deux domaines sont fixes (créés au démarrage) : seule leur description se modifie. */
     @PutMapping("/domaines/{id}")
     @PreAuthorize("hasRole('ADMINISTRATEUR')")
     public ResponseEntity<DomaineDTO> updateDomaine(@PathVariable String id, @RequestBody DomaineDTO dto) {
         return ResponseEntity.ok(referentielService.updateDomaine(id, dto));
-    }
-
-    @DeleteMapping("/domaines/{id}")
-    @PreAuthorize("hasRole('ADMINISTRATEUR')")
-    public ResponseEntity<Void> deleteDomaine(@PathVariable String id) {
-        referentielService.deleteDomaine(id);
-        return ResponseEntity.noContent().build();
     }
 
     // =========================================================================

@@ -4,7 +4,6 @@ import com.psyavocat.dto.orientation.PonderationCreateRequest;
 import com.psyavocat.dto.orientation.PonderationDTO;
 import com.psyavocat.dto.orientation.QuestionCreateRequest;
 import com.psyavocat.dto.orientation.QuestionDTO;
-import com.psyavocat.dto.orientation.QuestionnaireCreateRequest;
 import com.psyavocat.dto.orientation.QuestionnaireDTO;
 import com.psyavocat.dto.orientation.ReponseCreateRequest;
 import com.psyavocat.dto.orientation.ReponseDTO;
@@ -12,8 +11,8 @@ import com.psyavocat.dto.orientation.ReponseDTO;
 import java.util.List;
 
 /**
- * Contrat de service pour la gestion CRUD de l'orientation depuis l'espace Admin.
- * Couvre : Questionnaires, Questions, Réponses, Pondérations.
+ * Gestion de l'orientation depuis l'espace Admin : questions, réponses et pondérations du
+ * questionnaire d'orientation psychologique (unique, créé au démarrage).
  */
 public interface AdminOrientationService {
 
@@ -21,15 +20,8 @@ public interface AdminOrientationService {
     // QUESTIONNAIRES
     // =========================================================================
 
-    List<QuestionnaireDTO> getAllQuestionnaires();
-
-    QuestionnaireDTO getQuestionnaireById(String id);
-
-    QuestionnaireDTO createQuestionnaire(QuestionnaireCreateRequest request);
-
-    QuestionnaireDTO updateQuestionnaire(String id, QuestionnaireCreateRequest request);
-
-    void deleteQuestionnaire(String id);
+    /** Le questionnaire d'orientation psychologique. */
+    QuestionnaireDTO getQuestionnaireOrientation();
 
     // =========================================================================
     // QUESTIONS

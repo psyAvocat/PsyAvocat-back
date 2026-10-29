@@ -98,6 +98,19 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
+    public int marquerLuesParType(String ressourceType) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        List<Notification> nonLues = notificationRepository.findByDestinataireIdAndRessourceTypeAndLuFalse(uid, ressourceType);
+        LocalDateTime maintenant = LocalDateTime.now();
+        for (Notification n : nonLues) {
+            n.setLu(true);
+            n.setDateLecture(maintenant);
+        }
+        notificationRepository.saveAll(nonLues);
+        return nonLues.size();
+    }
+
+    @Override
     public void markAllAsRead() {
         String uid = authenticationContext.getRequiredFirebaseUid();
         LocalDateTime maintenant = LocalDateTime.now();
@@ -109,6 +122,23 @@ public class NotificationServiceImpl implements NotificationService {
             }
         }
         notificationRepository.saveAll(list);
+    }
+
+    @Override
+    public void supprimerNonLuesPourRessource(String destinataireId, String ressourceType, String ressourceId) {
+        List<Notification> nonLues = notificationRepository
+                .findByDestinataireIdAndRessourceTypeAndRessourceIdAndLuFalse(destinataireId, ressourceType, ressourceId);
+        if (!nonLues.isEmpty()) {
+            notificationRepository.deleteAll(nonLues);
+        }
+    }
+
+    @Override
+    public void supprimerPourRessource(String ressourceType, String ressourceId) {
+        List<Notification> liees = notificationRepository.findByRessourceTypeAndRessourceId(ressourceType, ressourceId);
+        if (!liees.isEmpty()) {
+            notificationRepository.deleteAll(liees);
+        }
     }
 
     @Override
@@ -137,6 +167,14 @@ public class NotificationServiceImpl implements NotificationService {
         }
 
         notificationRepository.delete(notif);
+    }
+
+    @Override
+    public int supprimerLues() {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        List<Notification> lues = notificationRepository.findByDestinataireIdAndLuTrue(uid);
+        notificationRepository.deleteAll(lues);
+        return lues.size();
     }
 
     /** Titre lisible pour les notifications créées sans titre explicite (appelants historiques). */

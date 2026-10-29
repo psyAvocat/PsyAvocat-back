@@ -33,20 +33,42 @@ public class RealtimeGateway {
         this.jsonMapper = jsonMapper;
     }
 
-    void enregistrer(String uid, WebSocketSession session) {
+    /**
+     * Ajoute une session ouverte.
+     * @return {@code true} si c'est la première session de l'utilisateur (il vient de passer en ligne)
+     */
+    boolean enregistrer(String uid, WebSocketSession session) {
         WebSocketSession sure = new ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MS, BUFFER_SIZE_LIMIT);
-        sessionsParUtilisateur.computeIfAbsent(uid, cle -> ConcurrentHashMap.newKeySet()).add(sure);
+        boolean[] premiere = {false};
+        sessionsParUtilisateur.compute(uid, (cle, sessions) -> {
+            if (sessions == null) {
+                sessions = ConcurrentHashMap.newKeySet();
+            }
+            premiere[0] = sessions.isEmpty();
+            sessions.add(sure);
+            return sessions;
+        });
+        return premiere[0];
     }
 
-    void retirer(String uid, WebSocketSession session) {
-        Set<WebSocketSession> sessions = sessionsParUtilisateur.get(uid);
-        if (sessions == null) {
-            return;
-        }
-        sessions.removeIf(s -> s.getId().equals(session.getId()));
-        if (sessions.isEmpty()) {
-            sessionsParUtilisateur.remove(uid);
-        }
+    /**
+     * Retire une session fermée.
+     * @return {@code true} si c'était la dernière session de l'utilisateur (il vient de passer hors ligne)
+     */
+    boolean retirer(String uid, WebSocketSession session) {
+        boolean[] derniere = {false};
+        sessionsParUtilisateur.computeIfPresent(uid, (cle, sessions) -> {
+            sessions.removeIf(s -> s.getId().equals(session.getId()));
+            derniere[0] = sessions.isEmpty();
+            return sessions.isEmpty() ? null : sessions;
+        });
+        return derniere[0];
+    }
+
+    /** Vrai si l'utilisateur a au moins une connexion temps réel ouverte (web ou mobile). */
+    public boolean estEnLigne(String uid) {
+        Set<WebSocketSession> sessions = uid != null ? sessionsParUtilisateur.get(uid) : null;
+        return sessions != null && sessions.stream().anyMatch(WebSocketSession::isOpen);
     }
 
     /** Envoie un événement à toutes les sessions ouvertes d'un utilisateur. */

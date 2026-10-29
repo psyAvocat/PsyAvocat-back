@@ -18,6 +18,10 @@ public class Domaine {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    /** Code du domaine fixe (PSYCHOLOGIQUE ou JURIDIQUE), voir DomainesFixes. */
+    @Column(unique = true)
+    private String code;
+
     @Column(nullable = false, unique = true)
     private String nom;
 
@@ -28,7 +32,7 @@ public class Domaine {
     @Column(name = "type_professionnel")
     private String typeProfessionnel;
 
-    // Aucune cascade : un domaine n'est supprimable que sans spécialité rattachée.
+    // Aucune cascade : les domaines sont fixes, les spécialités y sont rattachées par univers.
     @OneToMany(mappedBy = "domaine")
     private List<Specialite> specialites = new ArrayList<>();
 }

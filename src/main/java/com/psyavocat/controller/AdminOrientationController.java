@@ -5,7 +5,6 @@ import com.psyavocat.dto.orientation.PonderationDTO;
 import com.psyavocat.dto.orientation.QuestionCompleteCreateRequest;
 import com.psyavocat.dto.orientation.QuestionCreateRequest;
 import com.psyavocat.dto.orientation.QuestionDTO;
-import com.psyavocat.dto.orientation.QuestionnaireCreateRequest;
 import com.psyavocat.dto.orientation.QuestionnaireDTO;
 import com.psyavocat.dto.orientation.ReponseCreateRequest;
 import com.psyavocat.dto.orientation.ReponseDTO;
@@ -36,43 +35,20 @@ public class AdminOrientationController {
     // QUESTIONNAIRES
     // =========================================================================
 
-    @GetMapping("/questionnaires")
-    public ResponseEntity<List<QuestionnaireDTO>> getAllQuestionnaires() {
-        return ResponseEntity.ok(adminOrientationService.getAllQuestionnaires());
-    }
-
-    @GetMapping("/questionnaires/{id}")
-    public ResponseEntity<QuestionnaireDTO> getQuestionnaire(@PathVariable String id) {
-        return ResponseEntity.ok(adminOrientationService.getQuestionnaireById(id));
-    }
-
-    @PostMapping("/questionnaires")
-    public ResponseEntity<QuestionnaireDTO> createQuestionnaire(
-            @Valid @RequestBody QuestionnaireCreateRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(adminOrientationService.createQuestionnaire(request));
-    }
-
-    @PutMapping("/questionnaires/{id}")
-    public ResponseEntity<QuestionnaireDTO> updateQuestionnaire(
-            @PathVariable String id,
-            @Valid @RequestBody QuestionnaireCreateRequest request) {
-        return ResponseEntity.ok(adminOrientationService.updateQuestionnaire(id, request));
-    }
-
-    @DeleteMapping("/questionnaires/{id}")
-    public ResponseEntity<Void> deleteQuestionnaire(@PathVariable String id) {
-        adminOrientationService.deleteQuestionnaire(id);
-        return ResponseEntity.noContent().build();
+    /** Questionnaire d'orientation psychologique (unique, créé automatiquement au démarrage). */
+    @GetMapping("/questionnaire")
+    public ResponseEntity<QuestionnaireDTO> getQuestionnaireOrientation() {
+        return ResponseEntity.ok(adminOrientationService.getQuestionnaireOrientation());
     }
 
     // =========================================================================
     // QUESTIONS
     // =========================================================================
 
+    /** Questions du questionnaire d'orientation (paramètre facultatif, conservé pour compatibilité). */
     @GetMapping("/questions")
     public ResponseEntity<List<QuestionDTO>> getQuestionsByQuestionnaire(
-            @RequestParam String questionnaireId) {
+            @RequestParam(required = false) String questionnaireId) {
         return ResponseEntity.ok(adminOrientationService.getQuestionsByQuestionnaire(questionnaireId));
     }
 

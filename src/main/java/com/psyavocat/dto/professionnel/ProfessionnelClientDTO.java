@@ -19,6 +19,7 @@ public class ProfessionnelClientDTO {
     private String prenom;
     private String email;
     private String telephone;
+    private String photoUrl; // Photo de profil réelle du client / patient
     private LocalDateTime dernierRendezVous;
     private long nombreRendezVous;
     private String statut; // ACTIF, NOUVEAU, HISTORIQUE

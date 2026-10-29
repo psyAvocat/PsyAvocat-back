@@ -3,12 +3,14 @@ package com.psyavocat.service.impl;
 import com.psyavocat.dto.messagerie.*;
 import com.psyavocat.entity.Avocat;
 import com.psyavocat.entity.Conversation;
+import com.psyavocat.entity.ConversationMasquee;
 import com.psyavocat.entity.Professionnel;
 import com.psyavocat.entity.Psychologue;
 import com.psyavocat.entity.MessageContact;
 import com.psyavocat.entity.Utilisateur;
 import com.psyavocat.exception.ForbiddenException;
 import com.psyavocat.exception.ResourceNotFoundException;
+import com.psyavocat.repository.ConversationMasqueeRepository;
 import com.psyavocat.repository.ConversationRepository;
 import com.psyavocat.repository.FichePatientRepository;
 import com.psyavocat.repository.RendezVousRepository;
@@ -29,7 +31,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import com.psyavocat.service.support.ApresValidation;
 import com.psyavocat.service.support.Entites;
 
 @Service
@@ -47,6 +52,10 @@ public class MessagerieServiceImpl implements MessagerieService {
     private final RendezVousRepository rendezVousRepository;
     private final SoumissionDossierRepository soumissionDossierRepository;
     private final FichePatientRepository fichePatientRepository;
+    private final ConversationMasqueeRepository conversationMasqueeRepository;
+
+    /** Ressource des notifications « Nouveau message » (lien profond vers la conversation). */
+    private static final String RESSOURCE_CONVERSATION = "CONVERSATION";
 
     public MessagerieServiceImpl(
             ConversationRepository conversationRepository,
@@ -59,7 +68,8 @@ public class MessagerieServiceImpl implements MessagerieService {
             AccesProfessionnel accesProfessionnel,
             RendezVousRepository rendezVousRepository,
             SoumissionDossierRepository soumissionDossierRepository,
-            FichePatientRepository fichePatientRepository
+            FichePatientRepository fichePatientRepository,
+            ConversationMasqueeRepository conversationMasqueeRepository
     ) {
         this.conversationRepository = conversationRepository;
         this.messageContactRepository = messageContactRepository;
@@ -72,15 +82,36 @@ public class MessagerieServiceImpl implements MessagerieService {
         this.rendezVousRepository = rendezVousRepository;
         this.soumissionDossierRepository = soumissionDossierRepository;
         this.fichePatientRepository = fichePatientRepository;
+        this.conversationMasqueeRepository = conversationMasqueeRepository;
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ConversationResponseDTO> getMesConversations() {
         String uid = authenticationContext.getRequiredFirebaseUid();
+        Map<String, LocalDateTime> masquages = new HashMap<>();
+        conversationMasqueeRepository.findByUtilisateurId(uid)
+                .forEach(m -> masquages.put(m.getConversation().getId(), m.getDateMasquage()));
         return conversationRepository.findByParticipantId(uid).stream()
-                .map(c -> toConversationDto(c, uid))
+                // Discussion supprimée par l'appelant : elle ne réapparaît qu'avec un nouveau message.
+                .filter(c -> !masquages.containsKey(c.getId())
+                        || messagesVisibles(c, masquages.get(c.getId())).findAny().isPresent())
+                .map(c -> toConversationDto(c, uid, masquages.get(c.getId())))
                 .toList();
+    }
+
+    /** Messages postérieurs à la suppression de la discussion par l'appelant (tous si jamais supprimée). */
+    private java.util.stream.Stream<MessageContact> messagesVisibles(Conversation c, LocalDateTime depuis) {
+        java.util.stream.Stream<MessageContact> messages = c.getMessages() != null ? c.getMessages().stream()
+                : java.util.stream.Stream.empty();
+        return depuis == null ? messages
+                : messages.filter(m -> m.getDateEnvoi() != null && m.getDateEnvoi().isAfter(depuis));
+    }
+
+    private LocalDateTime masqueeLe(String conversationId, String uid) {
+        return conversationMasqueeRepository.findByConversationIdAndUtilisateurId(conversationId, uid)
+                .map(ConversationMasquee::getDateMasquage)
+                .orElse(null);
     }
 
     @Override
@@ -106,11 +137,48 @@ public class MessagerieServiceImpl implements MessagerieService {
             messageContactRepository.saveAll(messages);
         }
         // Conversation lue : ses notifications « Nouveau message » le sont aussi (cloche à jour).
-        notificationService.marquerLuesPourRessource(uid, "CONVERSATION", conversationId);
+        notificationService.marquerLuesPourRessource(uid, RESSOURCE_CONVERSATION, conversationId);
 
+        LocalDateTime depuis = masqueeLe(conversationId, uid);
         return messages.stream()
+                .filter(m -> depuis == null || (m.getDateEnvoi() != null && m.getDateEnvoi().isAfter(depuis)))
                 .map(this::toMessageDto)
                 .toList();
+    }
+
+    /** Une seule conversation par paire de personnes. */
+    private Conversation conversationEntre(String uid, String autreId) {
+        return conversationRepository.findByParticipantId(uid).stream()
+                .filter(c -> c.getParticipants().stream().anyMatch(p -> p.getId().equals(autreId)))
+                .findFirst()
+                .orElse(null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ConversationResponseDTO ouvrirAvec(String destinataireId) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Utilisateur expediteur = utilisateurRepository.findById(uid)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
+        Utilisateur destinataire = utilisateurRepository.findById(destinataireId)
+                .orElseThrow(() -> new ResourceNotFoundException("Destinataire introuvable"));
+
+        Conversation existante = conversationEntre(uid, destinataireId);
+        LocalDateTime depuis = existante != null ? masqueeLe(existante.getId(), uid) : null;
+        if (existante != null && messagesVisibles(existante, depuis).findAny().isPresent()) {
+            return toConversationDto(existante, uid, depuis);
+        }
+
+        // Aucune discussion visible : on vérifie dès maintenant que l'appelant peut écrire (même règle
+        // qu'au premier envoi), puis on renvoie un brouillon. Abandonné, il ne laisse aucune trace.
+        boolean aDejaEcrit = existante != null && messageContactRepository
+                .existsByConversationIdAndExpediteurId(existante.getId(), destinataireId);
+        verifierDestinataireAutorise(expediteur, destinataire, aDejaEcrit);
+
+        Conversation brouillon = new Conversation();
+        brouillon.setParticipants(List.of(expediteur, destinataire));
+        brouillon.setMessages(List.of());
+        return toConversationDto(brouillon, uid, null);
     }
 
     @Override
@@ -124,13 +192,11 @@ public class MessagerieServiceImpl implements MessagerieService {
 
         // Une seule conversation par paire de personnes : on la réutilise si elle existe
         // (les droits y sont vérifiés par sendMessage, réponse à une prise de contact comprise).
-        Conversation existante = conversationRepository.findByParticipantId(uid).stream()
-                .filter(c -> c.getParticipants().stream().anyMatch(p -> p.getId().equals(destinataire.getId())))
-                .findFirst()
-                .orElse(null);
+        Conversation existante = conversationEntre(uid, destinataire.getId());
         if (existante != null) {
             sendMessage(existante.getId(), new SendMessageRequest(request.getObjet(), request.getPremierMessage()));
-            return toConversationDto(conversationRepository.findById(existante.getId()).orElse(existante), uid);
+            return toConversationDto(conversationRepository.findById(existante.getId()).orElse(existante), uid,
+                    masqueeLe(existante.getId(), uid));
         }
 
         verifierDestinataireAutorise(expediteur, destinataire, false);
@@ -154,7 +220,7 @@ public class MessagerieServiceImpl implements MessagerieService {
         savedConv.getMessages().add(savedMsg);
 
         diffuserNouveauMessage(savedConv, expediteur, savedMsg);
-        return toConversationDto(savedConv, uid);
+        return toConversationDto(savedConv, uid, null);
     }
 
     @Override
@@ -190,6 +256,100 @@ public class MessagerieServiceImpl implements MessagerieService {
         MessageContact saved = messageContactRepository.save(message);
         diffuserNouveauMessage(conv, expediteur, saved);
         return toMessageDto(saved);
+    }
+
+    @Override
+    public void supprimerMessage(String conversationId, String messageId) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Conversation conv = conversationDuParticipant(conversationId, uid);
+        MessageContact message = messageContactRepository.findById(messageId)
+                .filter(m -> m.getConversation() != null && conversationId.equals(m.getConversation().getId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Message introuvable"));
+        if (message.getExpediteur() == null || !uid.equals(message.getExpediteur().getId())) {
+            throw new ForbiddenException("Vous ne pouvez supprimer que vos propres messages");
+        }
+        boolean nonLu = message.getLu() == null || !message.getLu();
+
+        conv.getMessages().removeIf(m -> messageId.equals(m.getId()));
+        messageContactRepository.delete(message);
+        // Plus aucun message : une discussion vide n'est pas conservée.
+        boolean vide = conv.getMessages().isEmpty();
+
+        Map<String, Object> evenement = new HashMap<>();
+        evenement.put("conversationId", conversationId);
+        evenement.put("id", messageId);
+        evenement.put("supprime", true);
+        if (vide) {
+            evenement.put("conversationSupprimee", true);
+        }
+        for (Utilisateur participant : conv.getParticipants()) {
+            // Message non encore lu : sa notification (avec aperçu) disparaît de la cloche du destinataire.
+            if (nonLu && !participant.getId().equals(uid)) {
+                notificationService.supprimerNonLuesPourRessource(participant.getId(), RESSOURCE_CONVERSATION, conversationId);
+            }
+            String destinataire = participant.getId();
+            ApresValidation.executer(() -> realtimeGateway.envoyerA(destinataire, "MESSAGE", evenement));
+        }
+        if (vide) {
+            effacer(conv);
+        }
+    }
+
+    /** Efface la discussion de la base, avec ses suppressions individuelles et ses notifications. */
+    private void effacer(Conversation conv) {
+        conversationMasqueeRepository.deleteAll(conversationMasqueeRepository.findByConversationId(conv.getId()));
+        notificationService.supprimerPourRessource(RESSOURCE_CONVERSATION, conv.getId());
+        conversationRepository.delete(conv);
+    }
+
+    @Override
+    public void supprimerConversation(String conversationId) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Conversation conv = conversationDuParticipant(conversationId, uid);
+        LocalDateTime maintenant = LocalDateTime.now();
+
+        // Les messages reçus sont considérés comme lus : plus de badge pour une discussion supprimée.
+        List<MessageContact> recus = conv.getMessages().stream()
+                .filter(m -> m.getExpediteur() != null && !uid.equals(m.getExpediteur().getId())
+                        && (m.getLu() == null || !m.getLu()))
+                .toList();
+        recus.forEach(m -> m.setLu(true));
+        messageContactRepository.saveAll(recus);
+        notificationService.marquerLuesPourRessource(uid, RESSOURCE_CONVERSATION, conversationId);
+
+        ConversationMasquee masquage = conversationMasqueeRepository
+                .findByConversationIdAndUtilisateurId(conversationId, uid)
+                .orElseGet(() -> {
+                    ConversationMasquee m = new ConversationMasquee();
+                    m.setConversation(conv);
+                    m.setUtilisateur(conv.getParticipants().stream()
+                            .filter(p -> p.getId().equals(uid)).findFirst().orElseThrow());
+                    return m;
+                });
+        masquage.setDateMasquage(maintenant);
+        conversationMasqueeRepository.save(masquage);
+
+        // Supprimée par tous ses participants (sans nouveau message depuis) : effacée de la base.
+        List<ConversationMasquee> masquages = conversationMasqueeRepository.findByConversationId(conversationId);
+        boolean supprimeeParTous = conv.getParticipants().stream().allMatch(p -> masquages.stream()
+                .anyMatch(m -> m.getUtilisateur().getId().equals(p.getId())
+                        && messagesVisibles(conv, m.getDateMasquage()).findAny().isEmpty()));
+        if (supprimeeParTous) {
+            effacer(conv);
+        }
+
+        // Autres appareils de l'appelant : la discussion disparaît aussi.
+        ApresValidation.executer(() -> realtimeGateway.envoyerA(uid, "MESSAGE",
+                Map.of("conversationId", conversationId, "conversationSupprimee", true)));
+    }
+
+    private Conversation conversationDuParticipant(String conversationId, String uid) {
+        Conversation conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Conversation introuvable"));
+        if (conv.getParticipants().stream().noneMatch(p -> p.getId().equals(uid))) {
+            throw new ForbiddenException("Vous ne faites pas partie de cette conversation");
+        }
+        return conv;
     }
 
     @Override
@@ -259,7 +419,9 @@ public class MessagerieServiceImpl implements MessagerieService {
     private void diffuserNouveauMessage(Conversation conv, Utilisateur expediteur, MessageContact message) {
         MessageResponseDTO dto = toMessageDto(message);
         for (Utilisateur participant : conv.getParticipants()) {
-            realtimeGateway.envoyerA(participant.getId(), "MESSAGE", dto);
+            String destinataire = participant.getId();
+            // Après validation : relu aussitôt par les clients, le message doit déjà être enregistré.
+            ApresValidation.executer(() -> realtimeGateway.envoyerA(destinataire, "MESSAGE", dto));
             if (!participant.getId().equals(expediteur.getId())) {
                 notificationService.notifier(new NotificationEvenement(
                         participant.getId(),
@@ -301,28 +463,24 @@ public class MessagerieServiceImpl implements MessagerieService {
         return contenu.length() > 120 ? contenu.substring(0, 117) + "..." : contenu;
     }
 
-    private ConversationResponseDTO toConversationDto(Conversation c, String currentUserId) {
+    /** @param depuis date de suppression de la discussion par l'utilisateur (null : jamais supprimée) */
+    private ConversationResponseDTO toConversationDto(Conversation c, String currentUserId, LocalDateTime depuis) {
         Utilisateur correspondant = c.getParticipants().stream()
                 .filter(p -> !p.getId().equals(currentUserId))
                 .findFirst()
                 .orElse(null);
 
-        MessageResponseDTO dernierMsg = null;
-        if (c.getMessages() != null && !c.getMessages().isEmpty()) {
-            // La collection n'est pas triée (ordre des identifiants) : le dernier
-            // message est le plus récent par date d'envoi.
-            MessageContact last = c.getMessages().stream()
-                    .max(java.util.Comparator.comparing(MessageContact::getDateEnvoi,
-                            java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
-                    .orElseThrow();
-            dernierMsg = toMessageDto(last);
-        }
+        // La collection n'est pas triée (ordre des identifiants) : le dernier
+        // message est le plus récent par date d'envoi.
+        MessageResponseDTO dernierMsg = messagesVisibles(c, depuis)
+                .max(java.util.Comparator.comparing(MessageContact::getDateEnvoi,
+                        java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
+                .map(this::toMessageDto)
+                .orElse(null);
 
-        long nonLus = (c.getMessages() != null)
-                ? c.getMessages().stream()
-                    .filter(m -> m.getExpediteur() != null && !m.getExpediteur().getId().equals(currentUserId) && (m.getLu() == null || !m.getLu()))
-                    .count()
-                : 0L;
+        long nonLus = messagesVisibles(c, depuis)
+                .filter(m -> m.getExpediteur() != null && !m.getExpediteur().getId().equals(currentUserId) && (m.getLu() == null || !m.getLu()))
+                .count();
 
         List<String> participantIds = c.getParticipants().stream().map(Utilisateur::getId).toList();
 
@@ -336,6 +494,7 @@ public class MessagerieServiceImpl implements MessagerieService {
                 .correspondantPrenom(correspondant != null ? correspondant.getPrenom() : null)
                 .correspondantType(typeDe(correspondant))
                 .correspondantPhotoUrl(correspondant != null ? mediaUrlResolver.photoUrlOf(correspondant) : null)
+                .correspondantEnLigne(correspondant != null && realtimeGateway.estEnLigne(correspondant.getId()))
                 .dernierMessage(dernierMsg)
                 .messagesNonLus(nonLus)
                 .build();

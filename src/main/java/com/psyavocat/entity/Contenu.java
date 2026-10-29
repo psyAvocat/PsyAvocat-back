@@ -20,6 +20,8 @@ public class Contenu {
     @Column(nullable = false)
     private String titre;
 
+    /** Résumé : jusqu'à 500 caractères (ContenuRequest). */
+    @Column(length = 500)
     private String description;
 
     @Column(columnDefinition = "LONGTEXT")
@@ -46,6 +48,6 @@ public class Contenu {
     /** Image d'illustration (bucket R2 psyavocat-media). */
     private String imageObjectKey;
 
-    /** Nombre de consultations du détail par des clients (sert au tri « Populaires »). */
+    /** Nombre de clients distincts ayant lu la publication (tri « Populaires ») ; voir LectureContenu. */
     private Long nombreVues = 0L;
 }

@@ -7,6 +7,7 @@ import com.psyavocat.dto.professionnel.ProfessionnelStatistiquesDTO;
 import com.psyavocat.entity.*;
 import com.psyavocat.exception.ForbiddenException;
 import com.psyavocat.exception.ResourceNotFoundException;
+import com.psyavocat.mapper.MediaUrlResolver;
 import com.psyavocat.repository.FichePatientRepository;
 import com.psyavocat.repository.RendezVousRepository;
 import com.psyavocat.repository.SoumissionDossierRepository;
@@ -32,6 +33,7 @@ public class ProfessionnelEspaceServiceImpl implements ProfessionnelEspaceServic
     private final SoumissionDossierRepository soumissionDossierRepository;
     private final FichePatientRepository fichePatientRepository;
     private final AccesProfessionnel accesProfessionnel;
+    private final MediaUrlResolver mediaUrlResolver;
 
     public ProfessionnelEspaceServiceImpl(
             AuthenticationContext authenticationContext,
@@ -39,7 +41,8 @@ public class ProfessionnelEspaceServiceImpl implements ProfessionnelEspaceServic
             RendezVousRepository rendezVousRepository,
             SoumissionDossierRepository soumissionDossierRepository,
             FichePatientRepository fichePatientRepository,
-            AccesProfessionnel accesProfessionnel
+            AccesProfessionnel accesProfessionnel,
+            MediaUrlResolver mediaUrlResolver
     ) {
         this.authenticationContext = authenticationContext;
         this.utilisateurRepository = utilisateurRepository;
@@ -47,6 +50,7 @@ public class ProfessionnelEspaceServiceImpl implements ProfessionnelEspaceServic
         this.soumissionDossierRepository = soumissionDossierRepository;
         this.fichePatientRepository = fichePatientRepository;
         this.accesProfessionnel = accesProfessionnel;
+        this.mediaUrlResolver = mediaUrlResolver;
     }
 
     /** Clients et statistiques : réservés aux professionnels approuvés. */
@@ -74,6 +78,7 @@ public class ProfessionnelEspaceServiceImpl implements ProfessionnelEspaceServic
                     .prenom(patient.getPrenom())
                     .email(patient.getEmail())
                     .telephone(patient.getTelephone())
+                    .photoUrl(mediaUrlResolver.photoUrlOf(patient))
                     .nombreRendezVous(0)
                     .statut("ACTIF")
                     .dernierMode(rdv.getMode())
@@ -101,6 +106,7 @@ public class ProfessionnelEspaceServiceImpl implements ProfessionnelEspaceServic
                         .prenom(j.getPrenom())
                         .email(j.getEmail())
                         .telephone(j.getTelephone())
+                        .photoUrl(mediaUrlResolver.photoUrlOf(j))
                         .nombreRendezVous(0)
                         .statut("NOUVEAU")
                         .dossiersCount(0)
@@ -123,6 +129,7 @@ public class ProfessionnelEspaceServiceImpl implements ProfessionnelEspaceServic
                         .prenom(p.getPrenom())
                         .email(p.getEmail())
                         .telephone(p.getTelephone())
+                        .photoUrl(mediaUrlResolver.photoUrlOf(p))
                         .nombreRendezVous(0)
                         .statut("ACTIF")
                         .seancesCount(0)

@@ -106,7 +106,7 @@ public class ProfilServiceImpl implements ProfilService {
                 existingAvocat.setModeConsultation(request.getModeConsultation());
                 existingAvocat.setNumeroBarreau(validerNumeroBarreau(request.getNumeroBarreau(), authUser.getFirebaseUid()));
                 existingAvocat.setSpecialites(specialitesDuType(request.getSpecialiteIds(), com.psyavocat.service.support.TypesProfessionnel.AVOCAT));
-                Avocat saved = avocatRepository.save(existingAvocat);
+                Avocat saved = enregistrerAvocat(existingAvocat);
                 return userMapper.toProfileResponse(saved);
             } else {
                 throw new ConflictException("Un profil métier existe déjà pour cet utilisateur");
@@ -129,7 +129,7 @@ public class ProfilServiceImpl implements ProfilService {
 
         avocat.setSpecialites(specialitesDuType(request.getSpecialiteIds(), com.psyavocat.service.support.TypesProfessionnel.AVOCAT));
 
-        Avocat saved = avocatRepository.save(avocat);
+        Avocat saved = enregistrerAvocat(avocat);
 
         // Notification immédiate aux administrateurs
         List<Administrateur> admins = administrateurRepository.findAll();
@@ -399,13 +399,34 @@ public class ProfilServiceImpl implements ProfilService {
         return normalise;
     }
 
-    /** Numéro de barreau unique (insensible à la casse) entre tous les avocats. */
+    static final String NUMERO_BARREAU_DEJA_UTILISE = "Ce numéro de barreau est déjà utilisé par un autre avocat.";
+
+    /**
+     * Numéro de barreau unique entre tous les avocats. Il est normalisé (majuscules, sans espaces)
+     * pour que « b 12 345 » et « B12345 » soient reconnus comme le même numéro.
+     */
     private String validerNumeroBarreau(String brut, String uid) {
-        String numero = validerTexteObligatoire(brut, "Le numéro de barreau");
-        if (avocatRepository.existsByNumeroBarreauIgnoreCaseAndIdNot(numero, uid)) {
-            throw new ConflictException("Ce numéro de barreau est déjà utilisé par un autre avocat.");
+        String numero = normaliserNumeroBarreau(validerTexteObligatoire(brut, "Le numéro de barreau"));
+        if (avocatRepository.numeroBarreauDejaUtilise(numero, uid)) {
+            throw new ConflictException(NUMERO_BARREAU_DEJA_UTILISE);
         }
         return numero;
+    }
+
+    static String normaliserNumeroBarreau(String numero) {
+        return numero.replaceAll("\\s+", "").toUpperCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * Enregistre l'avocat ; deux inscriptions simultanées avec le même numéro sont départagées
+     * par la contrainte d'unicité de la base.
+     */
+    private Avocat enregistrerAvocat(Avocat avocat) {
+        try {
+            return avocatRepository.saveAndFlush(avocat);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new ConflictException(NUMERO_BARREAU_DEJA_UTILISE);
+        }
     }
 
     /** Numéro d'agrément unique (insensible à la casse) entre tous les psychologues. */

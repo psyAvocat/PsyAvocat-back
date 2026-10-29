@@ -60,8 +60,12 @@ public class RendezVousController {
         return ResponseEntity.ok(rendezVousService.modifierCreneau(id, request));
     }
 
+    /** Corps facultatif : {@code {"motif": "..."}}, transmis à l'autre partie. */
     @PatchMapping("/{id}/annuler")
-    public ResponseEntity<RendezVousResponseDTO> annulerRendezVous(@PathVariable String id) {
-        return ResponseEntity.ok(rendezVousService.annulerRendezVous(id));
+    public ResponseEntity<RendezVousResponseDTO> annulerRendezVous(
+            @PathVariable String id,
+            @RequestBody(required = false) java.util.Map<String, String> corps
+    ) {
+        return ResponseEntity.ok(rendezVousService.annulerRendezVous(id, corps != null ? corps.get("motif") : null));
     }
 }

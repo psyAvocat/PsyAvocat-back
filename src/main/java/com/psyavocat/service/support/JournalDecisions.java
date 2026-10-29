@@ -36,6 +36,12 @@ public class JournalDecisions {
         repository.save(d);
     }
 
+    /** Dernière décision enregistrée pour un élément (null s'il n'a jamais été examiné). */
+    public DecisionAdministrativeDTO derniere(String cibleId) {
+        List<DecisionAdministrativeDTO> decisions = historique(cibleId);
+        return decisions.isEmpty() ? null : decisions.get(0);
+    }
+
     public List<DecisionAdministrativeDTO> historique(String cibleId) {
         return repository.findByCibleIdOrderByDateDecisionDesc(cibleId).stream()
                 .map(d -> DecisionAdministrativeDTO.builder()

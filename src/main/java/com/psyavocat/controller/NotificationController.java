@@ -34,10 +34,22 @@ public class NotificationController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Notifications d'un type de ressource marquées lues (ex. ouverture de la page Rendez-vous). */
+    @PatchMapping("/lu-type/{ressourceType}")
+    public ResponseEntity<java.util.Map<String, Integer>> marquerLuesParType(@PathVariable String ressourceType) {
+        return ResponseEntity.ok(java.util.Map.of("marquees", notificationService.marquerLuesParType(ressourceType)));
+    }
+
     @PatchMapping("/lu-tout")
     public ResponseEntity<Void> markAllAsRead() {
         notificationService.markAllAsRead();
         return ResponseEntity.noContent().build();
+    }
+
+    /** Supprime toutes les notifications déjà lues ; renvoie {"supprimees": n}. */
+    @DeleteMapping("/lues")
+    public ResponseEntity<java.util.Map<String, Integer>> supprimerLues() {
+        return ResponseEntity.ok(java.util.Map.of("supprimees", notificationService.supprimerLues()));
     }
 
     @DeleteMapping("/{id}")

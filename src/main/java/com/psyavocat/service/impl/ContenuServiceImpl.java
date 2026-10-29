@@ -9,6 +9,7 @@ import com.psyavocat.exception.ResourceNotFoundException;
 import com.psyavocat.mapper.MediaUrlResolver;
 import com.psyavocat.realtime.RealtimeGateway;
 import com.psyavocat.repository.ContenuRepository;
+import com.psyavocat.repository.LectureContenuRepository;
 import com.psyavocat.repository.SpecialiteRepository;
 import com.psyavocat.repository.UtilisateurRepository;
 import com.psyavocat.security.AuthenticationContext;
@@ -40,6 +41,7 @@ public class ContenuServiceImpl implements ContenuService {
     private final ImageStorageService imageStorageService;
     private final MediaUrlResolver mediaUrlResolver;
     private final RealtimeGateway realtimeGateway;
+    private final LectureContenuRepository lectureContenuRepository;
 
     public ContenuServiceImpl(ContenuRepository contenuRepository,
                               UtilisateurRepository utilisateurRepository,
@@ -47,7 +49,8 @@ public class ContenuServiceImpl implements ContenuService {
                               AuthenticationContext authenticationContext,
                               ImageStorageService imageStorageService,
                               MediaUrlResolver mediaUrlResolver,
-                              RealtimeGateway realtimeGateway) {
+                              RealtimeGateway realtimeGateway,
+                              LectureContenuRepository lectureContenuRepository) {
         this.contenuRepository = contenuRepository;
         this.utilisateurRepository = utilisateurRepository;
         this.specialiteRepository = specialiteRepository;
@@ -55,6 +58,7 @@ public class ContenuServiceImpl implements ContenuService {
         this.imageStorageService = imageStorageService;
         this.mediaUrlResolver = mediaUrlResolver;
         this.realtimeGateway = realtimeGateway;
+        this.lectureContenuRepository = lectureContenuRepository;
     }
 
     // ------------------------------------------------------------------
@@ -72,9 +76,13 @@ public class ContenuServiceImpl implements ContenuService {
         String specialite = specialiteId != null && !specialiteId.isBlank() ? specialiteId : null;
         String auteur = auteurId != null && !auteurId.isBlank() ? auteurId : null;
 
+        Comparator<Contenu> plusRecent =
+                Comparator.comparing(Contenu::getDatePublication, Comparator.nullsLast(Comparator.reverseOrder()));
+        // Populaires : plus de lecteurs d'abord ; à égalité (ou sans lecture), la plus récente.
         Comparator<Contenu> ordre = "populaire".equalsIgnoreCase(tri)
-                ? Comparator.comparing((Contenu c) -> c.getNombreVues() != null ? c.getNombreVues() : 0L).reversed()
-                : Comparator.comparing(Contenu::getDatePublication, Comparator.nullsLast(Comparator.reverseOrder()));
+                ? Comparator.comparing((Contenu c) -> c.getNombreVues() != null ? c.getNombreVues() : 0L)
+                        .reversed().thenComparing(plusRecent)
+                : plusRecent;
 
         return contenuRepository.rechercherPublies(typeNormalise, texte, specialite).stream()
                 .filter(c -> auteurPublieValide(c.getAuteur()))
@@ -86,26 +94,30 @@ public class ContenuServiceImpl implements ContenuService {
 
     @Override
     public ContenuResponseDTO getContenu(String id) {
-        // Visiteur non connecté (mode invité) : uid absent, lecture des seuls contenus publiés.
-        String uid = authenticationContext.getFirebaseUid().orElse(null);
+        String uid = authenticationContext.getRequiredFirebaseUid();
         Contenu contenu = contenuRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cette ressource n'est plus disponible."));
 
-        boolean estAuteur = uid != null && contenu.getAuteur() != null && uid.equals(contenu.getAuteur().getId());
+        boolean estAuteur = contenu.getAuteur() != null && uid.equals(contenu.getAuteur().getId());
         boolean publie = Boolean.TRUE.equals(contenu.getActif()) && auteurPublieValide(contenu.getAuteur());
         if (!estAuteur && !publie) {
             // Un contenu désactivé ou dont l'auteur n'est plus valide n'est jamais servi.
             throw new ResourceNotFoundException("Cette ressource n'est plus disponible.");
         }
 
-        Utilisateur lecteur = uid != null ? utilisateurRepository.findById(uid).orElse(null) : null;
-        boolean estLecteurPublic = lecteur == null || ClientAccounts.isClient(lecteur);
-        // Lecture : visiteurs et clients, auteur (édition) ou administrateur (modération).
-        if (!estAuteur && !estLecteurPublic && !(lecteur instanceof Administrateur)) {
+        Utilisateur lecteur = utilisateurRepository.findById(uid)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
+        boolean estClient = ClientAccounts.isClient(lecteur);
+        // Lecture : clients, auteur (édition) ou administrateur (modération).
+        if (!estAuteur && !estClient && !(lecteur instanceof Administrateur)) {
             throw new ForbiddenException("Les publications sont consultables depuis l'application mobile.");
         }
 
-        if (!estAuteur && estLecteurPublic) {
+        // Popularité : un client compte une seule fois par publication (relectures, actualisations
+        // et ouvertures répétées ne gonflent pas le compteur).
+        if (!estAuteur && estClient
+                && lectureContenuRepository.enregistrerPremiereLecture(
+                        java.util.UUID.randomUUID().toString(), id, uid, LocalDateTime.now()) > 0) {
             contenuRepository.incrementerVues(id);
         }
         return toDto(contenu, true);
@@ -211,6 +223,7 @@ public class ContenuServiceImpl implements ContenuService {
         if (contenu.getImageObjectKey() != null) {
             imageStorageService.deleteImage(contenu.getImageObjectKey());
         }
+        lectureContenuRepository.supprimerPourContenu(id);
         contenuRepository.delete(contenu);
         signaler(contenu, "SUPPRIME");
     }
@@ -234,19 +247,15 @@ public class ContenuServiceImpl implements ContenuService {
         return pro;
     }
 
-    /** Seuls les comptes clients (patient / justiciable) consultent les listes publiques. */
     /**
-     * Lecture publique : visiteurs non connectés (mode invité de l'application mobile)
-     * et clients. Un compte professionnel ou administrateur connecté gère ses
-     * publications depuis son espace (/mes-contenus).
+     * Listes de publications : réservées aux clients connectés (patient / justiciable). Un compte
+     * professionnel ou administrateur gère ses publications depuis son espace (/mes-contenus).
      */
     private void exigerLecteurPublic() {
-        String uid = authenticationContext.getFirebaseUid().orElse(null);
-        if (uid == null) {
-            return;
-        }
-        Utilisateur utilisateur = utilisateurRepository.findById(uid).orElse(null);
-        if (utilisateur != null && !ClientAccounts.isClient(utilisateur)) {
+        String uid = authenticationContext.getRequiredFirebaseUid();
+        Utilisateur utilisateur = utilisateurRepository.findById(uid)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil utilisateur introuvable"));
+        if (!ClientAccounts.isClient(utilisateur)) {
             throw new ForbiddenException("Les publications sont consultables depuis l'application mobile.");
         }
     }
